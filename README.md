@@ -1,6 +1,15 @@
 # MoltenDraw
 Infinite canvas drawing application.
 
+## Controls
+
+* Left click to draw.
+* Shift + Left click to draw lines.
+* Control + Scroll wheel to change the line thickness.
+* Middle click to drag the camera.
+* Scroll wheel to zoom.
+* Dot and Comma to rotate.
+
 ## Restore
 
 ```
