@@ -63,6 +63,10 @@ namespace GameProject {
                 _tree.Remove(l.Leaf);
             }
 
+            if (_thickness.Held() && MouseCondition.Scrolled()) {
+                _radius = MathHelper.Clamp(ExpToScale(ScaleToExp(_radius) - MouseCondition.ScrollDelta * 0.001f), 1f, 400f);
+            }
+
             if (_draw.Pressed()) {
                 _start = _mouseWorld;
                 _isDrawing = true;
@@ -99,6 +103,7 @@ namespace GameProject {
             if (_isDrawing) {
                 _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), TWColor.Gray300);
             }
+            _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), TWColor.Gray300);
             _sb.End();
 
             var font = _fontSystem.GetFont(24);
@@ -111,7 +116,7 @@ namespace GameProject {
         }
 
         public void UpdateCamera() {
-            if (MouseCondition.Scrolled()) {
+            if (MouseCondition.Scrolled() && !_thickness.Held()) {
                 _targetExp = MathHelper.Clamp(_targetExp - MouseCondition.ScrollDelta * _expDistance, _maxExp, _minExp);
             }
 
@@ -214,10 +219,15 @@ namespace GameProject {
 
         ICondition _draw = new MouseCondition(MouseButton.LeftButton);
         ICondition _line =
-                new AnyCondition(
-                    new KeyboardCondition(Keys.LeftShift),
-                    new KeyboardCondition(Keys.RightShift)
-                );
+            new AnyCondition(
+                new KeyboardCondition(Keys.LeftShift),
+                new KeyboardCondition(Keys.RightShift)
+            );
+        ICondition _thickness =
+            new AnyCondition(
+                new KeyboardCondition(Keys.LeftControl),
+                new KeyboardCondition(Keys.RightControl)
+            );
         ICondition _rotateLeft = new KeyboardCondition(Keys.OemComma);
         ICondition _rotateRight = new KeyboardCondition(Keys.OemPeriod);
 
