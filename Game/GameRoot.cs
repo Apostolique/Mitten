@@ -11,8 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-// TODO: Adaptive line size
-//       Redo
+// TODO: Redo
 //       Non line drawing
 //       Save
 
@@ -75,7 +74,7 @@ namespace GameProject {
                 _isDrawing = false;
                 _end = _mouseWorld;
 
-                CreateLine(_nextId++, _start, _end, 10f);
+                CreateLine(_nextId++, _start, _end, _radius * _camera.ScreenToWorldScale());
             }
 
             InputHelper.UpdateCleanup();
@@ -88,16 +87,17 @@ namespace GameProject {
 
             _sb.Begin(_camera.View);
             foreach (Line l in _tree.Query(_camera.ViewRect).OrderBy(e => e.Id)) {
-                _sb.DrawLine(l.A, l.B, l.Radius, TWColor.Gray300, TWColor.Gray200, 2f);
+                _sb.FillLine(l.A, l.B, l.Radius, TWColor.Gray300);
             }
             if (_isDrawing) {
-                _sb.DrawLine(_start, _end, 10f, TWColor.Gray300, TWColor.Gray200, 2f);
+                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), TWColor.Gray300);
             }
             _sb.End();
 
             var font = _fontSystem.GetFont(24);
             _s.Begin();
-            _s.DrawString(font, $"fps: {_fps.FramesPerSecond} - Dropped Frames: {_fps.DroppedFrames} - Draw ms: {_fps.TimePerFrame} - Update ms: {_fps.TimePerUpdate}", new Vector2(10, 10), Color.White);
+            _s.DrawString(font, $"fps: {_fps.FramesPerSecond} - Dropped Frames: {_fps.DroppedFrames} - Draw ms: {_fps.TimePerFrame} - Update ms: {_fps.TimePerUpdate}", new Vector2(10, 10), TWColor.White);
+            _s.DrawString(font, $"{_camera.ScreenToWorldScale()}", new Vector2(10, GraphicsDevice.Viewport.Height - 24), TWColor.White);
             _s.End();
 
             base.Draw(gameTime);
@@ -237,6 +237,7 @@ namespace GameProject {
         bool _isDrawing = false;
         Vector2 _start;
         Vector2 _end;
+        float _radius = 10f;
 
         Vector2 _mouseWorld;
         Vector2 _dragAnchor = Vector2.Zero;
@@ -246,7 +247,7 @@ namespace GameProject {
         float _speed = 0.08f;
         float _snapDistance = 0.001f;
         float _expDistance = 0.002f;
-        float _maxExp = -2f;
+        float _maxExp = -4f;
         float _minExp = 4f;
 
         FPSCounter _fps = new FPSCounter();
