@@ -12,8 +12,8 @@ using System.Collections.Generic;
 using System.Linq;
 
 // TODO: Redo
-//       Non line drawing
 //       Save
+// FIXME: Undo
 
 namespace GameProject {
     public class GameRoot : Game {
@@ -56,7 +56,7 @@ namespace GameProject {
 
             UpdateCamera();
 
-            if (_undo.Pressed()) {
+            if (_undo.Pressed() && _lines.Count > 0) {
                 _nextId--;
                 Line l = _lines[_nextId];
                 _lines.Remove(_nextId);
@@ -69,6 +69,11 @@ namespace GameProject {
             }
             if (_isDrawing && _draw.Held()) {
                 _end = _mouseWorld;
+
+                if (_start != _end && !_line.Held()) {
+                    CreateLine(_nextId++, _start, _end, _radius * _camera.ScreenToWorldScale());
+                    _start = _mouseWorld;
+                }
             }
             if (_isDrawing && _draw.Released()) {
                 _isDrawing = false;
@@ -86,8 +91,10 @@ namespace GameProject {
             GraphicsDevice.Clear(TWColor.Black);
 
             _sb.Begin(_camera.View);
+            int inView = 0;
             foreach (Line l in _tree.Query(_camera.ViewRect).OrderBy(e => e.Id)) {
                 _sb.FillLine(l.A, l.B, l.Radius, TWColor.Gray300);
+                inView++;
             }
             if (_isDrawing) {
                 _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), TWColor.Gray300);
@@ -97,7 +104,7 @@ namespace GameProject {
             var font = _fontSystem.GetFont(24);
             _s.Begin();
             _s.DrawString(font, $"fps: {_fps.FramesPerSecond} - Dropped Frames: {_fps.DroppedFrames} - Draw ms: {_fps.TimePerFrame} - Update ms: {_fps.TimePerUpdate}", new Vector2(10, 10), TWColor.White);
-            _s.DrawString(font, $"{_camera.ScreenToWorldScale()}", new Vector2(10, GraphicsDevice.Viewport.Height - 24), TWColor.White);
+            _s.DrawString(font, $"In view: {inView} -- Total: {_lines.Count} -- {_camera.ScreenToWorldScale()}", new Vector2(10, GraphicsDevice.Viewport.Height - 24), TWColor.White);
             _s.End();
 
             base.Draw(gameTime);
@@ -206,6 +213,11 @@ namespace GameProject {
             );
 
         ICondition _draw = new MouseCondition(MouseButton.LeftButton);
+        ICondition _line =
+                new AnyCondition(
+                    new KeyboardCondition(Keys.LeftShift),
+                    new KeyboardCondition(Keys.RightShift)
+                );
         ICondition _rotateLeft = new KeyboardCondition(Keys.OemComma);
         ICondition _rotateRight = new KeyboardCondition(Keys.OemPeriod);
 
