@@ -11,6 +11,8 @@
     <PublishReadyToRun>false</PublishReadyToRun>
     <TieredCompilation>false</TieredCompilation>
     <RuntimeIdentifiers>win10-x64;linux-x64;osx-x64</RuntimeIdentifiers>
+    <NoBeautyFlag>True</NoBeautyFlag>
+    <BeautyExcludes>SDL2*;libSDL2*;sdl2*;soft_oal*;openal*;MonoGame.Framework*</BeautyExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,6 +23,7 @@
     <PackageReference Include="Apos.Shapes" Version="0.1.5" />
     <PackageReference Include="Apos.Spatial" Version="0.2.1" />
     <PackageReference Include="FontStashSharp.MonoGame" Version="1.0.4" />
+    <PackageReference Include="nulastudio.NetCoreBeauty" Version="1.2.9.3" />
   </ItemGroup>
 
   <ItemGroup>
