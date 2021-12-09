@@ -1,5 +1,6 @@
 ﻿using Apos.Camera;
 using Apos.Input;
+using Track = Apos.Input.Track;
 using Apos.Shapes;
 using Apos.Spatial;
 using FontStashSharp;
@@ -11,9 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-// TODO: Redo
-//       Save
-// FIXME: Undo
+// TODO: Save
 
 namespace GameProject {
     public class GameRoot : Game {
@@ -41,6 +40,9 @@ namespace GameProject {
 
             _lines = new Dictionary<int, Line>();
             _tree = new AABBTree<Line>();
+            _undoGroups = new Stack<(int, int)>();
+            _redoGroups = new Stack<(int, int)>();
+            _redoLines = new Stack<Line>();
 
             _camera = new Camera(new DefaultViewport(GraphicsDevice, Window));
         }
@@ -56,11 +58,11 @@ namespace GameProject {
 
             UpdateCamera();
 
-            if (_undo.Pressed() && _lines.Count > 0) {
-                _nextId--;
-                Line l = _lines[_nextId];
-                _lines.Remove(_nextId);
-                _tree.Remove(l.Leaf);
+            if (_redo.Pressed()) {
+                Redo();
+            }
+            if (_undo.Pressed()) {
+                Undo();
             }
 
             if (_thickness.Held() && MouseCondition.Scrolled()) {
@@ -75,7 +77,7 @@ namespace GameProject {
                 _end = _mouseWorld;
 
                 if (_start != _end && !_line.Held()) {
-                    CreateLine(_nextId++, _start, _end, _radius * _camera.ScreenToWorldScale());
+                    CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
                     _start = _mouseWorld;
                 }
             }
@@ -83,7 +85,12 @@ namespace GameProject {
                 _isDrawing = false;
                 _end = _mouseWorld;
 
-                CreateLine(_nextId++, _start, _end, _radius * _camera.ScreenToWorldScale());
+                if (_start == _end) {
+                    _end += new Vector2(_camera.ScreenToWorldScale());
+                }
+
+                CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
+                CreateGroup();
             }
 
             InputHelper.UpdateCleanup();
@@ -166,11 +173,48 @@ namespace GameProject {
             return MathF.Exp(-exp);
         }
 
-        private void CreateLine(int id, Vector2 a, Vector2 b, float radius) {
-            Line l = new Line(id, a, b, radius);
+        private void CreateLine(Vector2 a, Vector2 b, float radius) {
+            Line l = new Line(_nextId++, a, b, radius);
 
             l.Leaf = _tree.Add(l.AABB, l);
-            _lines.Add(id, l);
+            _lines.Add(l.Id, l);
+            _group.Last = l.Id;
+        }
+        private void CreateGroup() {
+            _undoGroups.Push(_group);
+            _group = (_nextId, _nextId);
+            _redoGroups.Clear();
+        }
+        private void Undo() {
+            if (_undoGroups.Count > 0) {
+                var group = _undoGroups.Pop();
+                for (int i = group.First; i <= group.Last; i++) {
+                    Line l = _lines[i];
+                    _lines.Remove(i);
+                    _tree.Remove(l.Leaf);
+
+                    _redoLines.Push(l);
+                }
+                _redoGroups.Push(group);
+                _nextId = group.First;
+                _group = (_nextId, _nextId);
+            }
+        }
+        private void Redo() {
+            if (_redoGroups.Count > 0) {
+                var group = _redoGroups.Pop();
+                while (true) {
+                    var l = _redoLines.Pop();
+                    l.Leaf = _tree.Add(l.AABB, l);
+                    _lines.Add(l.Id, l);
+                    _group.Last = l.Id;
+
+                    if (l.Id == group.First) break;
+                }
+                _undoGroups.Push(group);
+                _nextId = group.Last + 1;
+                _group = (_nextId, _nextId);
+            }
         }
 
         private class Line {
@@ -208,6 +252,10 @@ namespace GameProject {
 
         AABBTree<Line> _tree;
         Dictionary<int, Line> _lines;
+        (int First, int Last) _group = (0, 0);
+        Stack<(int First, int Last)> _undoGroups;
+        Stack<(int First, int Last)> _redoGroups;
+        Stack<Line> _redoLines;
 
         int _nextId;
 
@@ -238,22 +286,22 @@ namespace GameProject {
         ICondition _undo =
             new AllCondition(
                 new AnyCondition(
-                    new KeyboardCondition(Keys.LeftControl),
-                    new KeyboardCondition(Keys.RightControl)
+                    new Track.KeyboardCondition(Keys.LeftControl),
+                    new Track.KeyboardCondition(Keys.RightControl)
                 ),
-                new KeyboardCondition(Keys.Z)
+                new Track.KeyboardCondition(Keys.Z)
             );
         ICondition _redo =
             new AllCondition(
                 new AnyCondition(
-                    new KeyboardCondition(Keys.LeftControl),
-                    new KeyboardCondition(Keys.RightControl)
+                    new Track.KeyboardCondition(Keys.LeftControl),
+                    new Track.KeyboardCondition(Keys.RightControl)
                 ),
                 new AnyCondition(
-                    new KeyboardCondition(Keys.LeftShift),
-                    new KeyboardCondition(Keys.RightShift)
+                    new Track.KeyboardCondition(Keys.LeftShift),
+                    new Track.KeyboardCondition(Keys.RightShift)
                 ),
-                new KeyboardCondition(Keys.Z)
+                new Track.KeyboardCondition(Keys.Z)
             );
 
         bool _isDrawing = false;
