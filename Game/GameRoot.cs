@@ -63,6 +63,7 @@ namespace GameProject {
             if (_quit.Pressed())
                 Exit();
 
+            if (_toggleDebug.Pressed()) _showDebug = !_showDebug;
             if (_resetFPS.Pressed()) _fps.DroppedFrames = 0;
             _fps.Update(gameTime);
 
@@ -128,11 +129,13 @@ namespace GameProject {
             _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), TWColor.Gray300);
             _sb.End();
 
-            var font = _fontSystem.GetFont(24);
-            _s.Begin();
-            _s.DrawString(font, $"fps: {_fps.FramesPerSecond} - Dropped Frames: {_fps.DroppedFrames} - Draw ms: {_fps.TimePerFrame} - Update ms: {_fps.TimePerUpdate}", new Vector2(10, 10), TWColor.White);
-            _s.DrawString(font, $"In view: {inView} -- Total: {_lines.Count} -- {_camera.ScreenToWorldScale()}", new Vector2(10, GraphicsDevice.Viewport.Height - 24), TWColor.White);
-            _s.End();
+            if (_showDebug) {
+                var font = _fontSystem.GetFont(24);
+                _s.Begin();
+                _s.DrawString(font, $"fps: {_fps.FramesPerSecond} - Dropped Frames: {_fps.DroppedFrames} - Draw ms: {_fps.TimePerFrame} - Update ms: {_fps.TimePerUpdate}", new Vector2(10, 10), TWColor.White);
+                _s.DrawString(font, $"In view: {inView} -- Total: {_lines.Count} -- {_camera.ScreenToWorldScale()}", new Vector2(10, GraphicsDevice.Viewport.Height - 24), TWColor.White);
+                _s.End();
+            }
 
             base.Draw(gameTime);
         }
@@ -365,6 +368,7 @@ namespace GameProject {
 
         ICondition _dragCamera = new MouseCondition(MouseButton.MiddleButton);
 
+        ICondition _toggleDebug = new KeyboardCondition(Keys.F1);
         ICondition _resetFPS = new KeyboardCondition(Keys.F2);
 
         ICondition _undo =
@@ -411,6 +415,8 @@ namespace GameProject {
         float _expDistance = 0.002f;
         float _maxExp = -4f;
         float _minExp = 4f;
+
+        bool _showDebug = false;
 
         FPSCounter _fps = new FPSCounter();
 
