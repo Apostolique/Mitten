@@ -1,4 +1,4 @@
-using Apos.Camera;
+﻿using Apos.Camera;
 using Apos.Input;
 using Track = Apos.Input.Track;
 using Apos.Shapes;
@@ -145,7 +145,7 @@ namespace GameProject {
             _sb.Begin(_camera.View);
             int inView = 0;
             foreach (Line l in _tree.Query(_camera.ViewRect).OrderBy(e => e.Id)) {
-                _sb.FillLine(l.A, l.B, l.Radius, TWColor.Gray300);
+                _sb.FillLine(l.A, l.B, l.Radius, l.Color);
                 inView++;
             }
             if (_isDrawing) {
@@ -217,7 +217,7 @@ namespace GameProject {
         }
 
         private void CreateLine(Vector2 a, Vector2 b, float radius) {
-            Line l = new Line(_nextId++, a, b, radius);
+            Line l = new Line(_nextId++, a, b, radius, TWColor.Gray300);
 
             l.Leaf = _tree.Add(l.AABB, l);
             _lines.Add(l.Id, l);
@@ -267,7 +267,8 @@ namespace GameProject {
                 Id = e.Id,
                 A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
                 B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
-                Radius = e.Radius
+                Radius = e.Radius,
+                Color = new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
             }).ToList();
             dd.UndoGroups = _undoGroups.Select(e => new DrawingData.Group {
                 First = e.First,
@@ -281,7 +282,8 @@ namespace GameProject {
                 Id = e.Id,
                 A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
                 B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
-                Radius = e.Radius
+                Radius = e.Radius,
+                Color = new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
             }).ToList();
 
             SaveJson<DrawingData>("Drawing.json", dd);
@@ -291,7 +293,7 @@ namespace GameProject {
             _nextId = dd.NextId;
             _group = (_nextId, _nextId);
             foreach (var e in dd.Lines) {
-                Line l = new Line(e.Id, new Vector2(e.A.X, e.A.Y), new Vector2(e.B.X, e.B.Y), e.Radius);
+                Line l = new Line(e.Id, new Vector2(e.A.X, e.A.Y), new Vector2(e.B.X, e.B.Y), e.Radius, new Color(e.Color.R, e.Color.G, e.Color.B));
                 l.Leaf = _tree.Add(l.AABB, l);
                 _lines.Add(l.Id, l);
             }
@@ -305,7 +307,7 @@ namespace GameProject {
             }
             for (int i = dd.RedoLines.Count - 1; i >= 0; i--) {
                 var l = dd.RedoLines[i];
-                _redoLines.Push(new Line(l.Id, new Vector2(l.A.X, l.A.Y), new Vector2(l.B.X, l.B.Y), l.Radius));
+                _redoLines.Push(new Line(l.Id, new Vector2(l.A.X, l.A.Y), new Vector2(l.B.X, l.B.Y), l.Radius, new Color(l.Color.R, l.Color.G, l.Color.B)));
             }
         }
 
@@ -393,11 +395,12 @@ namespace GameProject {
         }
 
         private class Line {
-            public Line(int id, Vector2 a, Vector2 b, float radius) {
+            public Line(int id, Vector2 a, Vector2 b, float radius, Color c) {
                 Id = id;
                 A = a;
                 B = b;
                 Radius = radius;
+                Color = c;
                 AABB = ComputeAABB();
             }
 
@@ -406,6 +409,7 @@ namespace GameProject {
             public Vector2 A { get; set; }
             public Vector2 B { get; set; }
             public float Radius { get; set; }
+            public Color Color { get; set; }
 
             public RectangleF AABB { get; set; }
 

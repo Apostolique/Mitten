@@ -9,18 +9,24 @@ namespace GameProject {
         public List<JsonLine> RedoLines { get; set; } = new List<JsonLine>();
 
         public class JsonLine {
-            public int Id { get; set; }
-            public XY A { get; set; }
-            public XY B { get; set; }
-            public float Radius { get; set; }
+            public int Id { get; set; } = 0;
+            public XY A { get; set; } = new XY();
+            public XY B { get; set; } = new XY();
+            public float Radius { get; set; } = 10f;
+            public Color Color { get; set; } = new Color();
         }
         public class XY {
-            public float X { get; set; }
-            public float Y { get; set; }
+            public float X { get; set; } = 0;
+            public float Y { get; set; } = 0;
+        }
+        public class Color {
+            public byte R { get; set; } = 212;
+            public byte G { get; set; } = 212;
+            public byte B { get; set; } = 216;
         }
         public class Group {
-            public int First { get; set; }
-            public int Last { get; set; }
+            public int First { get; set; } = 0;
+            public int Last { get; set; } = 0;
         }
     }
 }
