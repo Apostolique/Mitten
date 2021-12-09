@@ -10,7 +10,7 @@
             "request": "launch",
             "preLaunchTask": "buildDesktopGL",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/Platforms/DesktopGL/bin/Debug/netcoreapp3.1/MoltenDraw.dll",
+            "program": "${workspaceFolder}/Platforms/DesktopGL/bin/Debug/netcoreapp3.1/Mitten.dll",
             "args": [],
             "cwd": "${workspaceFolder}/Platforms/DesktopGL",
             // For more information about the 'console' field, see https://github.com/OmniSharp/omnisharp-vscode/blob/master/debugger-launchjson.md#console-terminal-window
@@ -23,7 +23,7 @@
             "request": "launch",
             "preLaunchTask": "buildWindowsDX",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/Platforms/WindowsDX/bin/Debug/netcoreapp3.1/MoltenDraw.dll",
+            "program": "${workspaceFolder}/Platforms/WindowsDX/bin/Debug/netcoreapp3.1/Mitten.dll",
             "args": [],
             "cwd": "${workspaceFolder}/Platforms/WindowsDX",
             // For more information about the 'console' field, see https://github.com/OmniSharp/omnisharp-vscode/blob/master/debugger-launchjson.md#console-terminal-window

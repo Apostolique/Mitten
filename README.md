@@ -1,4 +1,4 @@
-# MoltenDraw
+# Mitten
 Infinite canvas drawing application.
 
 ## Controls
