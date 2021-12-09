@@ -11,6 +11,8 @@ Infinite canvas drawing application.
 * Dot and Comma to rotate.
 * Control + Z to undo.
 * Control + Shift + Z to redo.
+* F11 for the borderless fullscreen mode.
+* Alt + Enter for the fullscreen mode.
 
 ## Restore
 

@@ -22,10 +22,22 @@ namespace GameProject {
             _graphics = new GraphicsDeviceManager(this);
             IsMouseVisible = true;
             Content.RootDirectory = "Content";
+
+            _settings = EnsureJson<Settings>("Settings.json");
         }
 
         protected override void Initialize() {
             Window.AllowUserResizing = true;
+
+            IsFixedTimeStep = _settings.IsFixedTimeStep;
+            _graphics.SynchronizeWithVerticalRetrace = _settings.IsVSync;
+
+            _settings.IsFullscreen = _settings.IsFullscreen || _settings.IsBorderless;
+
+            RestoreWindow();
+            if (_settings.IsFullscreen) {
+                ApplyFullscreenChange(false);
+            }
 
             base.Initialize();
         }
@@ -54,6 +66,12 @@ namespace GameProject {
         protected override void UnloadContent() {
             SaveDrawing();
 
+            if (!_settings.IsFullscreen) {
+                SaveWindow();
+            }
+
+            SaveJson<Settings>("Settings.json", _settings);
+
             base.UnloadContent();
         }
 
@@ -66,6 +84,13 @@ namespace GameProject {
             if (_toggleDebug.Pressed()) _showDebug = !_showDebug;
             if (_resetFPS.Pressed()) _fps.DroppedFrames = 0;
             _fps.Update(gameTime);
+
+            if (_toggleFullscreen.Pressed()) {
+                ToggleFullscreen();
+            }
+            if (_toggleBorderless.Pressed()) {
+                ToggleBorderless();
+            }
 
             UpdateCamera();
 
@@ -304,6 +329,68 @@ namespace GameProject {
             return json;
         }
 
+        private void ToggleFullscreen() {
+            bool oldIsFullscreen = _settings.IsFullscreen;
+
+            if (_settings.IsBorderless) {
+                _settings.IsBorderless = false;
+            } else {
+                _settings.IsFullscreen = !_settings.IsFullscreen;
+            }
+
+            ApplyFullscreenChange(oldIsFullscreen);
+        }
+        private void ToggleBorderless() {
+            bool oldIsFullscreen = _settings.IsFullscreen;
+
+            _settings.IsBorderless = !_settings.IsBorderless;
+            _settings.IsFullscreen = _settings.IsBorderless;
+
+            ApplyFullscreenChange(oldIsFullscreen);
+        }
+
+        private void ApplyFullscreenChange(bool oldIsFullscreen) {
+            if (_settings.IsFullscreen) {
+                if (oldIsFullscreen) {
+                    ApplyHardwareMode();
+                } else {
+                    SetFullscreen();
+                }
+            } else {
+                UnsetFullscreen();
+            }
+        }
+        private void ApplyHardwareMode() {
+            _graphics.HardwareModeSwitch = !_settings.IsBorderless;
+            _graphics.ApplyChanges();
+        }
+        private void SetFullscreen() {
+            SaveWindow();
+
+            _graphics.PreferredBackBufferWidth = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Width;
+            _graphics.PreferredBackBufferHeight = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height;
+            _graphics.HardwareModeSwitch = !_settings.IsBorderless;
+
+            _graphics.IsFullScreen = true;
+            _graphics.ApplyChanges();
+        }
+        private void UnsetFullscreen() {
+            _graphics.IsFullScreen = false;
+            RestoreWindow();
+        }
+        private void SaveWindow() {
+            _settings.X = Window.ClientBounds.X;
+            _settings.Y = Window.ClientBounds.Y;
+            _settings.Width = Window.ClientBounds.Width;
+            _settings.Height = Window.ClientBounds.Height;
+        }
+        private void RestoreWindow() {
+            Window.Position = new Point(_settings.X, _settings.Y);
+            _graphics.PreferredBackBufferWidth = _settings.Width;
+            _graphics.PreferredBackBufferHeight = _settings.Height;
+            _graphics.ApplyChanges();
+        }
+
         private class Line {
             public Line(int id, Vector2 a, Vector2 b, float radius) {
                 Id = id;
@@ -336,6 +423,8 @@ namespace GameProject {
         SpriteBatch _s;
         ShapeBatch _sb;
         FontSystem _fontSystem;
+
+        Settings _settings;
 
         AABBTree<Line> _tree;
         Dictionary<int, Line> _lines;
@@ -399,6 +488,13 @@ namespace GameProject {
                 ),
                 new Track.KeyboardCondition(Keys.S)
             );
+
+        ICondition _toggleFullscreen =
+            new AllCondition(
+                new KeyboardCondition(Keys.LeftAlt),
+                new KeyboardCondition(Keys.Enter)
+            );
+        ICondition _toggleBorderless = new KeyboardCondition(Keys.F11);
 
         bool _isDrawing = false;
         Vector2 _start;
