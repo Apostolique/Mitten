@@ -58,13 +58,6 @@ namespace GameProject {
 
             UpdateCamera();
 
-            if (_redo.Pressed()) {
-                Redo();
-            }
-            if (_undo.Pressed()) {
-                Undo();
-            }
-
             if (_thickness.Held() && MouseCondition.Scrolled()) {
                 _radius = MathHelper.Clamp(ExpToScale(ScaleToExp(_radius) - MouseCondition.ScrollDelta * 0.001f), 1f, 400f);
             }
@@ -91,6 +84,15 @@ namespace GameProject {
 
                 CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
                 CreateGroup();
+            }
+
+            if (!_isDrawing) {
+                if (_redo.Pressed()) {
+                    Redo();
+                }
+                if (_undo.Pressed()) {
+                    Undo();
+                }
             }
 
             InputHelper.UpdateCleanup();
