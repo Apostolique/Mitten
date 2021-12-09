@@ -9,6 +9,8 @@ Infinite canvas drawing application.
 * Middle click to drag the camera.
 * Scroll wheel to zoom.
 * Dot and Comma to rotate.
+* Control + Z to undo.
+* Control + Shift + Z to redo.
 
 ## Restore
 
