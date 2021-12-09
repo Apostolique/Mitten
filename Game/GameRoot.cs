@@ -1,4 +1,4 @@
-﻿using Apos.Camera;
+using Apos.Camera;
 using Apos.Input;
 using Track = Apos.Input.Track;
 using Apos.Shapes;
@@ -227,6 +227,7 @@ namespace GameProject {
             _undoGroups.Push(_group);
             _group = (_nextId, _nextId);
             _redoGroups.Clear();
+            _redoLines.Clear();
         }
         private void Undo() {
             if (_undoGroups.Count > 0) {
