@@ -11,8 +11,10 @@ using MonoGame.Extended;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.IO;
 
-// TODO: Save
+// TODO: Add way to pick line color.
 
 namespace GameProject {
     public class GameRoot : Game {
@@ -45,6 +47,14 @@ namespace GameProject {
             _redoLines = new Stack<Line>();
 
             _camera = new Camera(new DefaultViewport(GraphicsDevice, Window));
+
+            LoadDrawing();
+        }
+
+        protected override void UnloadContent() {
+            SaveDrawing();
+
+            base.UnloadContent();
         }
 
         protected override void Update(GameTime gameTime) {
@@ -92,6 +102,9 @@ namespace GameProject {
                 }
                 if (_undo.Pressed()) {
                     Undo();
+                }
+                if (_save.Pressed()) {
+                    SaveDrawing();
                 }
             }
 
@@ -218,6 +231,75 @@ namespace GameProject {
                 _group = (_nextId, _nextId);
             }
         }
+        private void SaveDrawing() {
+            DrawingData dd = new DrawingData();
+            dd.NextId = _nextId;
+            dd.Lines = _tree.Select(e => new DrawingData.JsonLine {
+                Id = e.Id,
+                A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
+                B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
+                Radius = e.Radius
+            }).ToList();
+            dd.UndoGroups = _undoGroups.Select(e => new DrawingData.Group {
+                First = e.First,
+                Last = e.Last
+            }).ToList();
+            dd.RedoGroups = _redoGroups.Select(e => new DrawingData.Group {
+                First = e.First,
+                Last = e.Last
+            }).ToList();
+            dd.RedoLines = _redoLines.Select(e => new DrawingData.JsonLine {
+                Id = e.Id,
+                A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
+                B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
+                Radius = e.Radius
+            }).ToList();
+
+            SaveJson<DrawingData>("Drawing.json", dd);
+        }
+        private void LoadDrawing() {
+            DrawingData dd = EnsureJson<DrawingData>("Drawing.json");
+            _nextId = dd.NextId;
+            _group = (_nextId, _nextId);
+            foreach (var e in dd.Lines) {
+                Line l = new Line(e.Id, new Vector2(e.A.X, e.A.Y), new Vector2(e.B.X, e.B.Y), e.Radius);
+                l.Leaf = _tree.Add(l.AABB, l);
+                _lines.Add(l.Id, l);
+            }
+            for (int i = dd.UndoGroups.Count - 1; i >= 0; i--) {
+                var group = dd.UndoGroups[i];
+                _undoGroups.Push((group.First, group.Last));
+            }
+            for (int i = dd.RedoGroups.Count - 1; i >= 0; i--) {
+                var group = dd.RedoGroups[i];
+                _redoGroups.Push((group.First, group.Last));
+            }
+            for (int i = dd.RedoLines.Count - 1; i >= 0; i--) {
+                var l = dd.RedoLines[i];
+                _redoLines.Push(new Line(l.Id, new Vector2(l.A.X, l.A.Y), new Vector2(l.B.X, l.B.Y), l.Radius));
+            }
+        }
+
+        public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, name);
+        public static void SaveJson<T>(string name, T json) {
+            string jsonPath = GetPath(name);
+            string jsonString = JsonSerializer.Serialize(json, _options);
+            File.WriteAllText(jsonPath, jsonString);
+        }
+        public static T EnsureJson<T>(string name) where T : new() {
+            T json;
+            string jsonPath = GetPath(name);
+
+            if (File.Exists(jsonPath)) {
+                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), _options);
+            } else {
+                json = new T();
+                string jsonString = JsonSerializer.Serialize(json, _options);
+                File.WriteAllText(jsonPath, jsonString);
+            }
+
+            return json;
+        }
 
         private class Line {
             public Line(int id, Vector2 a, Vector2 b, float radius) {
@@ -305,6 +387,14 @@ namespace GameProject {
                 ),
                 new Track.KeyboardCondition(Keys.Z)
             );
+        ICondition _save =
+            new AllCondition(
+                new AnyCondition(
+                    new Track.KeyboardCondition(Keys.LeftControl),
+                    new Track.KeyboardCondition(Keys.RightControl)
+                ),
+                new Track.KeyboardCondition(Keys.S)
+            );
 
         bool _isDrawing = false;
         Vector2 _start;
@@ -323,5 +413,10 @@ namespace GameProject {
         float _minExp = 4f;
 
         FPSCounter _fps = new FPSCounter();
+
+        private static JsonSerializerOptions _options = new JsonSerializerOptions {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = true,
+        };
     }
 }
