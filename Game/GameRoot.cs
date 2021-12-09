@@ -14,7 +14,9 @@ using System.Linq;
 using System.Text.Json;
 using System.IO;
 
-// TODO: Add way to pick line color.
+// TODO:
+//       Add way to pick line color.
+//       Add tablet pressure sensitivity.
 
 namespace GameProject {
     public class GameRoot : Game {
