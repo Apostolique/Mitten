@@ -106,32 +106,37 @@ namespace GameProject {
             } else {
                 UpdateCamera();
 
-                if (_thickness.Held() && MouseCondition.Scrolled()) {
-                    _radius = MathHelper.Clamp(ExpToScale(ScaleToExp(_radius) - MouseCondition.ScrollDelta * 0.001f), 1f, 400f);
-                }
-
-                if (_draw.Pressed()) {
-                    _start = _mouseWorld;
-                    _isDrawing = true;
-                }
-                if (_isDrawing && _draw.Held()) {
-                    _end = _mouseWorld;
-
-                    if (_start != _end && !_line.Held()) {
-                        CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
+                if (!_isDrawing && _thickness.Held()) {
+                    if (_thickness.Pressed()) {
+                        _radiusStart = _radius;
+                        _thicknessStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                    }
+                    var diffX = (InputHelper.NewMouse.X - _thicknessStart.X) / 2f;
+                    _radius = MathHelper.Clamp(_radiusStart + diffX, 0.5f, 1000f);
+                } else {
+                    if (_draw.Pressed()) {
                         _start = _mouseWorld;
+                        _isDrawing = true;
                     }
-                }
-                if (_isDrawing && _draw.Released()) {
-                    _isDrawing = false;
-                    _end = _mouseWorld;
+                    if (_isDrawing && _draw.Held()) {
+                        _end = _mouseWorld;
 
-                    if (_start == _end) {
-                        _end += new Vector2(_camera.ScreenToWorldScale());
+                        if (_start != _end && !_line.Held()) {
+                            CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
+                            _start = _mouseWorld;
+                        }
                     }
+                    if (_isDrawing && _draw.Released()) {
+                        _isDrawing = false;
+                        _end = _mouseWorld;
 
-                    CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
-                    CreateGroup();
+                        if (_start == _end) {
+                            _end += new Vector2(_camera.ScreenToWorldScale());
+                        }
+
+                        CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
+                        CreateGroup();
+                    }
                 }
             }
 
@@ -164,7 +169,11 @@ namespace GameProject {
             if (_isDrawing) {
                 _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), _color);
             }
-            _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), _color);
+            if (!_thickness.Held()) {
+                _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), _color);
+            } else {
+                _sb.FillCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale(), _color);
+            }
             _sb.End();
 
             if (_pickColor.Held()) {
@@ -472,9 +481,16 @@ namespace GameProject {
                 new KeyboardCondition(Keys.RightShift)
             );
         ICondition _thickness =
-            new AnyCondition(
-                new KeyboardCondition(Keys.LeftControl),
-                new KeyboardCondition(Keys.RightControl)
+            new AllCondition(
+                new AnyCondition(
+                    new KeyboardCondition(Keys.LeftControl),
+                    new KeyboardCondition(Keys.RightControl)
+                ),
+                new AnyCondition(
+                    new KeyboardCondition(Keys.LeftShift),
+                    new KeyboardCondition(Keys.RightShift)
+                ),
+                new MouseCondition(MouseButton.LeftButton)
             );
         ICondition _rotateLeft = new KeyboardCondition(Keys.OemComma);
         ICondition _rotateRight = new KeyboardCondition(Keys.OemPeriod);
@@ -550,6 +566,9 @@ namespace GameProject {
         float _expDistance = 0.002f;
         float _maxExp = -4f;
         float _minExp = 4f;
+
+        float _radiusStart;
+        Vector2 _thicknessStart;
 
         bool _showDebug = false;
 
