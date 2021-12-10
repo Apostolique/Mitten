@@ -62,6 +62,8 @@ namespace GameProject {
 
             _camera = new Camera(new DefaultViewport(GraphicsDevice, Window));
 
+            _cp = new ColorPicker(GraphicsDevice, Content);
+
             LoadDrawing();
         }
 
@@ -94,34 +96,38 @@ namespace GameProject {
                 ToggleBorderless();
             }
 
-            UpdateCamera();
+            if (_pickColor.Held()) {
+                _color = _cp.UpdateInput();
+            } else {
+                UpdateCamera();
 
-            if (_thickness.Held() && MouseCondition.Scrolled()) {
-                _radius = MathHelper.Clamp(ExpToScale(ScaleToExp(_radius) - MouseCondition.ScrollDelta * 0.001f), 1f, 400f);
-            }
+                if (_thickness.Held() && MouseCondition.Scrolled()) {
+                    _radius = MathHelper.Clamp(ExpToScale(ScaleToExp(_radius) - MouseCondition.ScrollDelta * 0.001f), 1f, 400f);
+                }
 
-            if (_draw.Pressed()) {
-                _start = _mouseWorld;
-                _isDrawing = true;
-            }
-            if (_isDrawing && _draw.Held()) {
-                _end = _mouseWorld;
-
-                if (_start != _end && !_line.Held()) {
-                    CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
+                if (_draw.Pressed()) {
                     _start = _mouseWorld;
+                    _isDrawing = true;
                 }
-            }
-            if (_isDrawing && _draw.Released()) {
-                _isDrawing = false;
-                _end = _mouseWorld;
+                if (_isDrawing && _draw.Held()) {
+                    _end = _mouseWorld;
 
-                if (_start == _end) {
-                    _end += new Vector2(_camera.ScreenToWorldScale());
+                    if (_start != _end && !_line.Held()) {
+                        CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
+                        _start = _mouseWorld;
+                    }
                 }
+                if (_isDrawing && _draw.Released()) {
+                    _isDrawing = false;
+                    _end = _mouseWorld;
 
-                CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
-                CreateGroup();
+                    if (_start == _end) {
+                        _end += new Vector2(_camera.ScreenToWorldScale());
+                    }
+
+                    CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
+                    CreateGroup();
+                }
             }
 
             if (!_isDrawing) {
@@ -151,10 +157,14 @@ namespace GameProject {
                 inView++;
             }
             if (_isDrawing) {
-                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), TWColor.Gray300);
+                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), _color);
             }
-            _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), TWColor.Gray300);
+            _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), _color);
             _sb.End();
+
+            if (_pickColor.Held()) {
+                _cp.Draw();
+            }
 
             if (_showDebug) {
                 var font = _fontSystem.GetFont(24);
@@ -219,7 +229,7 @@ namespace GameProject {
         }
 
         private void CreateLine(Vector2 a, Vector2 b, float radius) {
-            Line l = new Line(_nextId++, a, b, radius, TWColor.Gray300);
+            Line l = new Line(_nextId++, a, b, radius, _color);
 
             l.Leaf = _tree.Add(l.AABB, l);
             _lines.Add(l.Id, l);
@@ -503,10 +513,19 @@ namespace GameProject {
             );
         ICondition _toggleBorderless = new KeyboardCondition(Keys.F11);
 
+        ICondition _pickColor =
+            new AnyCondition(
+                new KeyboardCondition(Keys.LeftAlt),
+                new KeyboardCondition(Keys.RightAlt)
+            );
+
         bool _isDrawing = false;
         Vector2 _start;
         Vector2 _end;
         float _radius = 10f;
+        Color _color = TWColor.Gray300;
+
+        ColorPicker _cp;
 
         Vector2 _mouseWorld;
         Vector2 _dragAnchor = Vector2.Zero;
