@@ -15,8 +15,9 @@ using System.Text.Json;
 using System.IO;
 
 // TODO:
-//       Add way to pick line color.
 //       Add tablet pressure sensitivity.
+//       Rework line thickness controls. Should be more like Krita.
+//       Add zoom controls with click drag like Krita.
 
 namespace GameProject {
     public class GameRoot : Game {
