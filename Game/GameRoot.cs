@@ -98,7 +98,11 @@ namespace GameProject {
             }
 
             if (_pickColor.Held()) {
-                _color = _cp.UpdateInput();
+                if (_pickBackground.Held()) {
+                    _bgColor = _cp.UpdateInput();
+                } else {
+                    _color = _cp.UpdateInput();
+                }
             } else {
                 UpdateCamera();
 
@@ -149,7 +153,7 @@ namespace GameProject {
 
         protected override void Draw(GameTime gameTime) {
             _fps.Draw(gameTime);
-            GraphicsDevice.Clear(TWColor.Black);
+            GraphicsDevice.Clear(_bgColor);
 
             _sb.Begin(_camera.View);
             int inView = 0;
@@ -276,6 +280,7 @@ namespace GameProject {
         private void SaveDrawing() {
             DrawingData dd = new DrawingData();
             dd.NextId = _nextId;
+            dd.BackgroundColor = new DrawingData.Color { R = _bgColor.R, G = _bgColor.G, B = _bgColor.B };
             dd.Lines = _tree.Select(e => new DrawingData.JsonLine {
                 Id = e.Id,
                 A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
@@ -305,6 +310,7 @@ namespace GameProject {
             DrawingData dd = EnsureJson<DrawingData>("Drawing.json");
             _nextId = dd.NextId;
             _group = (_nextId, _nextId);
+            _bgColor = new Color(dd.BackgroundColor.R, dd.BackgroundColor.G, dd.BackgroundColor.B);
             foreach (var e in dd.Lines) {
                 Line l = new Line(e.Id, new Vector2(e.A.X, e.A.Y), new Vector2(e.B.X, e.B.Y), e.Radius, new Color(e.Color.R, e.Color.G, e.Color.B));
                 l.Leaf = _tree.Add(l.AABB, l);
@@ -514,6 +520,11 @@ namespace GameProject {
             );
         ICondition _toggleBorderless = new KeyboardCondition(Keys.F11);
 
+        ICondition _pickBackground =
+            new AnyCondition(
+                new KeyboardCondition(Keys.LeftControl),
+                new KeyboardCondition(Keys.RightControl)
+            );
         ICondition _pickColor =
             new AnyCondition(
                 new KeyboardCondition(Keys.LeftAlt),
@@ -525,6 +536,7 @@ namespace GameProject {
         Vector2 _end;
         float _radius = 10f;
         Color _color = TWColor.Gray300;
+        Color _bgColor = TWColor.Black;
 
         ColorPicker _cp;
 

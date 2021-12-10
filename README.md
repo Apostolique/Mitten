@@ -7,6 +7,7 @@ Infinite canvas drawing application.
 * Shift + Left click to draw lines.
 * Control + Scroll wheel to change the line thickness.
 * Alt + Hover to select a different color.
+* Control + Alt + Hover to select a different background color.
 * Middle click to drag the camera.
 * Scroll wheel to zoom.
 * Dot and Comma to rotate.

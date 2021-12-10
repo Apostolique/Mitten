@@ -3,6 +3,7 @@ using System.Collections.Generic;
 namespace GameProject {
     public class DrawingData {
         public int NextId { get; set; } = 0;
+        public Color BackgroundColor { get; set; } = new Color { R = 0, G = 0, B = 0 };
         public List<JsonLine> Lines { get; set; } = new List<JsonLine>();
         public List<Group> UndoGroups { get; set; } = new List<Group>();
         public List<Group> RedoGroups { get; set; } = new List<Group>();
