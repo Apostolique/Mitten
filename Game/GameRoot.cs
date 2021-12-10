@@ -16,8 +16,7 @@ using System.IO;
 
 // TODO:
 //       Add tablet pressure sensitivity.
-//       Rework line thickness controls. Should be more like Krita.
-//       Add zoom controls with click drag like Krita.
+//       Rotation controls like Krita.
 
 namespace GameProject {
     public class GameRoot : Game {
@@ -192,7 +191,15 @@ namespace GameProject {
         }
 
         public void UpdateCamera() {
-            if (MouseCondition.Scrolled() && !_thickness.Held()) {
+            if (_dragZoom.Held()) {
+                if (_dragZoom.Pressed()) {
+                    _expStart = _targetExp;
+                    _zoomStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                }
+                var diffY = (InputHelper.NewMouse.Y - _zoomStart.Y) / 100f;
+                _targetExp = _expStart + diffY;
+                _camera.Z = _camera.ScaleToZ(ExpToScale(_targetExp), 0f);
+            } else if (MouseCondition.Scrolled() && !_thickness.Held()) {
                 _targetExp = MathHelper.Clamp(_targetExp - MouseCondition.ScrollDelta * _expDistance, _maxExp, _minExp);
             }
 
@@ -205,16 +212,18 @@ namespace GameProject {
 
             _mouseWorld = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
 
-            if (_dragCamera.Pressed()) {
-                _dragAnchor = _mouseWorld;
-                _isDragging = true;
-            }
-            if (_isDragging && _dragCamera.HeldOnly()) {
-                _camera.XY += _dragAnchor - _mouseWorld;
-                _mouseWorld = _dragAnchor;
-            }
-            if (_isDragging && _dragCamera.Released()) {
-                _isDragging = false;
+            if (!_dragZoom.Held()) {
+                if (_dragCamera.Pressed()) {
+                    _dragAnchor = _mouseWorld;
+                    _isDragging = true;
+                }
+                if (_isDragging && _dragCamera.HeldOnly()) {
+                    _camera.XY += _dragAnchor - _mouseWorld;
+                    _mouseWorld = _dragAnchor;
+                }
+                if (_isDragging && _dragCamera.Released()) {
+                    _isDragging = false;
+                }
             }
 
             _camera.Z = _camera.ScaleToZ(ExpToScale(Interpolate(ScaleToExp(_camera.ZToScale(_camera.Z, 0f)), _targetExp, _speed, _snapDistance)), 0f);
@@ -492,6 +501,14 @@ namespace GameProject {
                 ),
                 new MouseCondition(MouseButton.LeftButton)
             );
+        ICondition _dragZoom =
+            new AllCondition(
+                new AnyCondition(
+                    new KeyboardCondition(Keys.LeftControl),
+                    new KeyboardCondition(Keys.RightControl)
+                ),
+                new MouseCondition(MouseButton.MiddleButton)
+            );
         ICondition _rotateLeft = new KeyboardCondition(Keys.OemComma);
         ICondition _rotateRight = new KeyboardCondition(Keys.OemPeriod);
 
@@ -569,6 +586,8 @@ namespace GameProject {
 
         float _radiusStart;
         Vector2 _thicknessStart;
+        float _expStart;
+        Vector2 _zoomStart;
 
         bool _showDebug = false;
 
