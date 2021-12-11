@@ -197,7 +197,7 @@ namespace GameProject {
                     _zoomStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
                 }
                 var diffY = (InputHelper.NewMouse.Y - _zoomStart.Y) / 100f;
-                _targetExp = _expStart + diffY;
+                _targetExp = MathHelper.Clamp(_expStart + diffY, _maxExp, _minExp);
                 _camera.Z = _camera.ScaleToZ(ExpToScale(_targetExp), 0f);
             } else if (MouseCondition.Scrolled() && !_thickness.Held()) {
                 _targetExp = MathHelper.Clamp(_targetExp - MouseCondition.ScrollDelta * _expDistance, _maxExp, _minExp);
