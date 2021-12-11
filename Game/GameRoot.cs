@@ -322,6 +322,8 @@ namespace GameProject {
                 Color = new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
             }).ToList();
 
+            dd.Camera = new DrawingData.Cam { X = _camera.X, Y = _camera.Y, Z = _camera.Z, Rotation = _camera.Rotation };
+
             SaveJson<DrawingData>("Drawing.json", dd);
         }
         private void LoadDrawing() {
@@ -346,6 +348,12 @@ namespace GameProject {
                 var l = dd.RedoLines[i];
                 _redoLines.Push(new Line(l.Id, new Vector2(l.A.X, l.A.Y), new Vector2(l.B.X, l.B.Y), l.Radius, new Color(l.Color.R, l.Color.G, l.Color.B)));
             }
+
+            _camera.XY = new Vector2(dd.Camera.X, dd.Camera.Y);
+            _camera.Z = dd.Camera.Z;
+            _camera.Rotation = dd.Camera.Rotation;
+            _targetExp = ScaleToExp(_camera.ZToScale(_camera.Z, 0f));
+            _targetRotation = _camera.Rotation;
         }
 
         public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, name);
