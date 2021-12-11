@@ -25,6 +25,13 @@ Infinite canvas drawing application.
 * F11 for the borderless fullscreen mode.
 * Alt + Enter for the fullscreen mode.
 
+## Saved files
+
+Saved next to the application's executable.
+
+* Drawing.json - Your whole canvas is saved there including undo redo and camera position.
+* Settings.json - Window settings are saved here. Includes if the app should start in fullscreen, vsync and fixed timestep.
+
 ## Restore
 
 ```
