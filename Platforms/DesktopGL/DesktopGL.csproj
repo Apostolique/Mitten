@@ -48,4 +48,8 @@
     </EmbeddedResource>
   </ItemGroup>
 
+  <ItemGroup>
+    <TrimmerRootAssembly Include="MonoGame.Framework" Visible="false" />
+  </ItemGroup>
+
 </Project>

@@ -377,7 +377,7 @@ namespace GameProject {
             string jsonPath = GetPath(name);
 
             if (File.Exists(jsonPath)) {
-                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), _options);
+                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), _options)!;
             } else {
                 json = new T();
                 string jsonString = JsonSerializer.Serialize(json, _options);
@@ -479,19 +479,19 @@ namespace GameProject {
         }
 
         GraphicsDeviceManager _graphics;
-        Camera _camera;
-        SpriteBatch _s;
-        ShapeBatch _sb;
-        FontSystem _fontSystem;
+        Camera _camera = null!;
+        SpriteBatch _s = null!;
+        ShapeBatch _sb = null!;
+        FontSystem _fontSystem = null!;
 
         Settings _settings;
 
-        AABBTree<Line> _tree;
-        Dictionary<int, Line> _lines;
+        AABBTree<Line> _tree = null!;
+        Dictionary<int, Line> _lines = null!;
         (int First, int Last) _group = (0, 0);
-        Stack<(int First, int Last)> _undoGroups;
-        Stack<(int First, int Last)> _redoGroups;
-        Stack<Line> _redoLines;
+        Stack<(int First, int Last)> _undoGroups = null!;
+        Stack<(int First, int Last)> _redoGroups = null!;
+        Stack<Line> _redoLines = null!;
 
         int _nextId;
 
@@ -593,7 +593,7 @@ namespace GameProject {
         Color _color = TWColor.Gray300;
         Color _bgColor = TWColor.Black;
 
-        ColorPicker _cp;
+        ColorPicker _cp = null!;
 
         Vector2 _mouseWorld;
         Vector2 _dragAnchor = Vector2.Zero;
