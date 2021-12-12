@@ -195,6 +195,8 @@ namespace GameProject {
                 if (_dragZoom.Pressed()) {
                     _expStart = _targetExp;
                     _zoomStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                    _dragAnchor = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                    _pinCamera = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
                 }
                 var diffY = (InputHelper.NewMouse.Y - _zoomStart.Y) / 100f;
                 _targetExp = MathHelper.Clamp(_expStart + diffY, _maxExp, _minExp);
@@ -210,19 +212,18 @@ namespace GameProject {
                 _targetRotation -= MathHelper.PiOver4;
             }
 
-            _mouseWorld = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+            if (_dragZoom.Held()) {
+                _camera.XY += _dragAnchor - _camera.ScreenToWorld(_pinCamera);
+                _mouseWorld = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+            } else {
+                _mouseWorld = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
 
-            if (!_dragZoom.Held()) {
                 if (_dragCamera.Pressed()) {
                     _dragAnchor = _mouseWorld;
-                    _isDragging = true;
                 }
-                if (_isDragging && _dragCamera.HeldOnly()) {
+                if (_dragCamera.Held()) {
                     _camera.XY += _dragAnchor - _mouseWorld;
                     _mouseWorld = _dragAnchor;
-                }
-                if (_isDragging && _dragCamera.Released()) {
-                    _isDragging = false;
                 }
             }
 
@@ -520,7 +521,11 @@ namespace GameProject {
         ICondition _rotateLeft = new KeyboardCondition(Keys.OemComma);
         ICondition _rotateRight = new KeyboardCondition(Keys.OemPeriod);
 
-        ICondition _dragCamera = new MouseCondition(MouseButton.MiddleButton);
+        ICondition _dragCamera =
+            new AnyCondition(
+                new MouseCondition(MouseButton.RightButton),
+                new MouseCondition(MouseButton.MiddleButton)
+            );
 
         ICondition _toggleDebug = new KeyboardCondition(Keys.F1);
         ICondition _resetFPS = new KeyboardCondition(Keys.F2);
@@ -583,7 +588,6 @@ namespace GameProject {
 
         Vector2 _mouseWorld;
         Vector2 _dragAnchor = Vector2.Zero;
-        bool _isDragging = false;
         float _targetExp = 0f;
         float _targetRotation = 0f;
         float _speed = 0.08f;
@@ -596,6 +600,7 @@ namespace GameProject {
         Vector2 _thicknessStart;
         float _expStart;
         Vector2 _zoomStart;
+        Vector2 _pinCamera;
 
         bool _showDebug = false;
 
