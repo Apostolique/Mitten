@@ -175,6 +175,15 @@ namespace GameProject {
             }
             _sb.End();
 
+            _sb.Begin();
+            var camExp = ScaleToExp(_camera.ZToScale(_camera.Z, 0f));
+            if (_dragZoom.Held()) {
+                var length = _minExp - _maxExp;
+                var percent = (camExp - _maxExp) / length;
+                _sb.DrawLine(new Vector2(0, GraphicsDevice.Viewport.Height), new Vector2(0, GraphicsDevice.Viewport.Height * percent), 10f, TWColor.White, TWColor.Black, 2f);
+            }
+            _sb.End();
+
             if (_pickColor.Held()) {
                 _cp.Draw();
             }
@@ -190,7 +199,7 @@ namespace GameProject {
             base.Draw(gameTime);
         }
 
-        public void UpdateCamera() {
+        private void UpdateCamera() {
             if (_dragZoom.Held()) {
                 if (_dragZoom.Pressed()) {
                     _expStart = _targetExp;
