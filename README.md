@@ -18,8 +18,7 @@ Infinite canvas drawing application.
 * Scroll wheel to zoom.
 * Control + Middle click to zoom. Drag up to zoom in and down to zoom out.
 * Dot and Comma to rotate.
-* Control + Space to save a hyper zoom position.
-* Hold Space to go to the hyper zoom position. Release to go back to the previous position.
+* Hold Space use the hyper zoom. Release to go back to the previous position.
 
 ### Misc
 

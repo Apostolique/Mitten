@@ -1,4 +1,4 @@
-using Apos.Camera;
+﻿using Apos.Camera;
 using Apos.Input;
 using Track = Apos.Input.Track;
 using Apos.Shapes;
@@ -103,7 +103,7 @@ namespace GameProject {
                     _color = _cp.UpdateInput();
                 }
             } else {
-                UpdateCamera();
+                UpdateCamera(gameTime);
 
                 if (!_isDrawing && _thickness.Held()) {
                     if (_thickness.Pressed()) {
@@ -196,10 +196,10 @@ namespace GameProject {
 
             _sb.Begin();
             var camExp = ScaleToExp(_camera.ZToScale(_camera.Z, 0f));
-            if (_dragZoom.Held()) {
+            if (_showZoomUntil > gameTime.TotalGameTime.Ticks) {
                 var length = _minExp - _maxExp;
                 var percent = (camExp - _maxExp) / length;
-                _sb.DrawLine(new Vector2(0, GraphicsDevice.Viewport.Height), new Vector2(0, GraphicsDevice.Viewport.Height * percent), 10f, TWColor.White, TWColor.Black, 2f);
+                _sb.DrawLine(new Vector2(0, GraphicsDevice.Viewport.Height), new Vector2(0, GraphicsDevice.Viewport.Height * percent), 10f, TWColor.White * 0.2f, TWColor.Black, 2f);
             }
             _sb.End();
 
@@ -218,20 +218,17 @@ namespace GameProject {
             base.Draw(gameTime);
         }
 
-        private void UpdateCamera() {
-            if (_setHyperZoom.Pressed()) {
-                _hyperZoomExp = _targetExp;
-            }
+        private void UpdateCamera(GameTime gameTime) {
             if (_hyperZoom.Pressed()) {
                 _preservedExp = _targetExp;
-                _targetExp = _hyperZoomExp;
-                _isHyperZoom = true;
+                _targetExp = _preservedExp + _hyperZoomExp;
             }
-            if (_isHyperZoom && _hyperZoom.Held()) {
-                _targetExp = _hyperZoomExp;
-            } else if (_isHyperZoom && _hyperZoom.Released()) {
+            if (_hyperZoom.Held()) {
+                _targetExp = _preservedExp + _hyperZoomExp;
+
+                _showZoomUntil = gameTime.TotalGameTime.Ticks + TimeSpan.TicksPerSecond;
+            } else if (_hyperZoom.Released()) {
                 _targetExp = _preservedExp;
-                _isHyperZoom = false;
             } else {
                 if (_dragZoom.Held()) {
                     if (_dragZoom.Pressed()) {
@@ -243,8 +240,12 @@ namespace GameProject {
                     var diffY = (InputHelper.NewMouse.Y - _zoomStart.Y) / 100f;
                     _targetExp = MathHelper.Clamp(_expStart + diffY, _maxExp, _minExp);
                     _camera.Z = _camera.ScaleToZ(ExpToScale(_targetExp), 0f);
+
+                    _showZoomUntil = gameTime.TotalGameTime.Ticks + TimeSpan.TicksPerSecond;
                 } else if (MouseCondition.Scrolled() && !_thickness.Held()) {
                     _targetExp = MathHelper.Clamp(_targetExp - MouseCondition.ScrollDelta * _expDistance, _maxExp, _minExp);
+
+                    _showZoomUntil = gameTime.TotalGameTime.Ticks + TimeSpan.TicksPerSecond;
                 }
             }
 
@@ -625,15 +626,7 @@ namespace GameProject {
                 new KeyboardCondition(Keys.RightAlt)
             );
 
-        ICondition _setHyperZoom =
-            new AllCondition(
-                new AnyCondition(
-                    new KeyboardCondition(Keys.LeftControl),
-                    new KeyboardCondition(Keys.RightControl)
-                ),
-                new Track.KeyboardCondition(Keys.Space)
-            );
-        ICondition _hyperZoom = new Track.KeyboardCondition(Keys.Space);
+        ICondition _hyperZoom = new KeyboardCondition(Keys.Space);
 
         ICondition _toggleEraser = new KeyboardCondition(Keys.E);
 
@@ -665,9 +658,10 @@ namespace GameProject {
 
         float _preservedExp = 0f;
         float _hyperZoomExp = 4f;
-        bool _isHyperZoom = false;
 
         bool _showDebug = false;
+
+        long _showZoomUntil = 0;
 
         FPSCounter _fps = new FPSCounter();
 
