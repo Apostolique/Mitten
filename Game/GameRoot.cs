@@ -1,4 +1,4 @@
-﻿using Apos.Camera;
+using Apos.Camera;
 using Apos.Input;
 using Track = Apos.Input.Track;
 using Apos.Shapes;
@@ -349,7 +349,7 @@ namespace GameProject {
                 A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
                 B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
                 Radius = e.Radius,
-                Color = new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
+                Color = e.Color == TWColor.Transparent ? null : new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
             }).ToList();
             dd.UndoGroups = _undoGroups.Select(e => new DrawingData.Group {
                 First = e.First,
@@ -377,7 +377,11 @@ namespace GameProject {
             _group = (_nextId, _nextId);
             _bgColor = new Color(dd.BackgroundColor.R, dd.BackgroundColor.G, dd.BackgroundColor.B);
             foreach (var e in dd.Lines) {
-                Line l = new Line(e.Id, new Vector2(e.A.X, e.A.Y), new Vector2(e.B.X, e.B.Y), e.Radius, new Color(e.Color.R, e.Color.G, e.Color.B));
+                Color c = TWColor.Transparent;
+                if (e.Color != null) {
+                    c = new Color(e.Color.R, e.Color.G, e.Color.B);
+                }
+                Line l = new Line(e.Id, new Vector2(e.A.X, e.A.Y), new Vector2(e.B.X, e.B.Y), e.Radius, c);
                 l.Leaf = _tree.Add(l.AABB, l);
                 _lines.Add(l.Id, l);
             }

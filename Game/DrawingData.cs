@@ -22,7 +22,7 @@ namespace GameProject {
             public XY A { get; set; } = new XY();
             public XY B { get; set; } = new XY();
             public float Radius { get; set; } = 10f;
-            public Color Color { get; set; } = new Color();
+            public Color? Color { get; set; } = new Color();
         }
         public class XY {
             public float X { get; set; } = 0;
