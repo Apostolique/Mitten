@@ -10,6 +10,7 @@ Infinite canvas drawing application.
 * Control + Shift + Left click to change the brush size. Drag left to shrink the size and right to increase it.
 * Alt + Hover to select a different color.
 * Control + Alt + Hover to select a different background color.
+* E to toggle the eraser.
 
 ### Camera
 
@@ -17,6 +18,8 @@ Infinite canvas drawing application.
 * Scroll wheel to zoom.
 * Control + Middle click to zoom. Drag up to zoom in and down to zoom out.
 * Dot and Comma to rotate.
+* Control + Space to save a hyper zoom position.
+* Hold Space to go to the hyper zoom position. Release to go back to the previous position.
 
 ### Misc
 
