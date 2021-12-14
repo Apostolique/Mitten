@@ -10,6 +10,7 @@
     <Nullable>enable</Nullable>
     <PublishTrimmed>true</PublishTrimmed>
     <PublishReadyToRun>false</PublishReadyToRun>
+    <SelfContained>true</SelfContained>
     <TieredCompilation>false</TieredCompilation>
     <RuntimeIdentifiers>win10-x64;linux-x64;osx-x64</RuntimeIdentifiers>
     <NoBeautyFlag>True</NoBeautyFlag>
