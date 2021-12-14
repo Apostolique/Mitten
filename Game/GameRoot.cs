@@ -183,13 +183,13 @@ namespace GameProject {
                 _sb.FillCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale(), fgColor);
                 if (_isErasing) {
                     _sb.BorderCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale(), TWColor.Black, 6f);
-                    _sb.BorderCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale() - 2f, TWColor.White, 2f);
+                    _sb.BorderCircle(_camera.ScreenToWorld(_thicknessStart), (_radius - 2f) * _camera.ScreenToWorldScale(), TWColor.White, 2f);
                 }
             } else {
                 _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), fgColor);
                 if (_isErasing) {
                     _sb.BorderCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), TWColor.Black, 6f);
-                    _sb.BorderCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale() - 2f, TWColor.White, 2f);
+                    _sb.BorderCircle(_mouseWorld, (_radius - 2f) * _camera.ScreenToWorldScale(), TWColor.White, 2f);
                 }
             }
             _sb.End();
