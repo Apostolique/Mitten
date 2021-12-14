@@ -140,6 +140,10 @@ namespace GameProject {
             }
 
             if (!_isDrawing) {
+                if (_toggleEraser.Pressed()) {
+                    _isErasing = !_isErasing;
+                }
+
                 if (_redo.Pressed()) {
                     Redo();
                 }
@@ -160,18 +164,33 @@ namespace GameProject {
             GraphicsDevice.Clear(_bgColor);
 
             _sb.Begin(_camera.View);
+
+            var fgColor = _color;
+            if (_isErasing) {
+                fgColor = _bgColor;
+            }
+
             int inView = 0;
             foreach (Line l in _tree.Query(_camera.ViewRect).OrderBy(e => e.Id)) {
-                _sb.FillLine(l.A, l.B, l.Radius, l.Color);
+                var c = l.Color == TWColor.Transparent ? _bgColor : l.Color;
+                _sb.FillLine(l.A, l.B, l.Radius, c);
                 inView++;
             }
             if (_isDrawing) {
-                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), _color);
+                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), fgColor);
             }
-            if (!_thickness.Held()) {
-                _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), _color);
+            if (_thickness.Held()) {
+                _sb.FillCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale(), fgColor);
+                if (_isErasing) {
+                    _sb.BorderCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale(), TWColor.Black, 6f);
+                    _sb.BorderCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale() - 2f, TWColor.White, 2f);
+                }
             } else {
-                _sb.FillCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale(), _color);
+                _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), fgColor);
+                if (_isErasing) {
+                    _sb.BorderCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), TWColor.Black, 6f);
+                    _sb.BorderCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale() - 2f, TWColor.White, 2f);
+                }
             }
             _sb.End();
 
@@ -277,7 +296,8 @@ namespace GameProject {
         }
 
         private void CreateLine(Vector2 a, Vector2 b, float radius) {
-            Line l = new Line(_nextId++, a, b, radius, _color);
+            var c = _isErasing ? TWColor.Transparent : _color;
+            Line l = new Line(_nextId++, a, b, radius, c);
 
             l.Leaf = _tree.Add(l.AABB, l);
             _lines.Add(l.Id, l);
@@ -611,6 +631,9 @@ namespace GameProject {
             );
         ICondition _hyperZoom = new Track.KeyboardCondition(Keys.Space);
 
+        ICondition _toggleEraser = new KeyboardCondition(Keys.E);
+
+        bool _isErasing = false;
         bool _isDrawing = false;
         Vector2 _start;
         Vector2 _end;
