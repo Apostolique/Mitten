@@ -200,18 +200,33 @@ namespace GameProject {
         }
 
         private void UpdateCamera() {
-            if (_dragZoom.Held()) {
-                if (_dragZoom.Pressed()) {
-                    _expStart = _targetExp;
-                    _zoomStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
-                    _dragAnchor = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
-                    _pinCamera = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+            if (_setHyperZoom.Pressed()) {
+                _hyperZoomExp = _targetExp;
+            }
+            if (_hyperZoom.Pressed()) {
+                _preservedExp = _targetExp;
+                _targetExp = _hyperZoomExp;
+                _isHyperZoom = true;
+            }
+            if (_isHyperZoom && _hyperZoom.Held()) {
+                _targetExp = _hyperZoomExp;
+            } else if (_isHyperZoom && _hyperZoom.Released()) {
+                _targetExp = _preservedExp;
+                _isHyperZoom = false;
+            } else {
+                if (_dragZoom.Held()) {
+                    if (_dragZoom.Pressed()) {
+                        _expStart = _targetExp;
+                        _zoomStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                        _dragAnchor = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                        _pinCamera = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                    }
+                    var diffY = (InputHelper.NewMouse.Y - _zoomStart.Y) / 100f;
+                    _targetExp = MathHelper.Clamp(_expStart + diffY, _maxExp, _minExp);
+                    _camera.Z = _camera.ScaleToZ(ExpToScale(_targetExp), 0f);
+                } else if (MouseCondition.Scrolled() && !_thickness.Held()) {
+                    _targetExp = MathHelper.Clamp(_targetExp - MouseCondition.ScrollDelta * _expDistance, _maxExp, _minExp);
                 }
-                var diffY = (InputHelper.NewMouse.Y - _zoomStart.Y) / 100f;
-                _targetExp = MathHelper.Clamp(_expStart + diffY, _maxExp, _minExp);
-                _camera.Z = _camera.ScaleToZ(ExpToScale(_targetExp), 0f);
-            } else if (MouseCondition.Scrolled() && !_thickness.Held()) {
-                _targetExp = MathHelper.Clamp(_targetExp - MouseCondition.ScrollDelta * _expDistance, _maxExp, _minExp);
             }
 
             if (_rotateLeft.Pressed()) {
@@ -220,6 +235,9 @@ namespace GameProject {
             if (_rotateRight.Pressed()) {
                 _targetRotation -= MathHelper.PiOver4;
             }
+
+            _camera.Z = _camera.ScaleToZ(ExpToScale(Interpolate(ScaleToExp(_camera.ZToScale(_camera.Z, 0f)), _targetExp, _speed, _snapDistance)), 0f);
+            _camera.Rotation = Interpolate(_camera.Rotation, _targetRotation, _speed, _snapDistance);
 
             if (_dragZoom.Held()) {
                 _camera.XY += _dragAnchor - _camera.ScreenToWorld(_pinCamera);
@@ -235,9 +253,6 @@ namespace GameProject {
                     _mouseWorld = _dragAnchor;
                 }
             }
-
-            _camera.Z = _camera.ScaleToZ(ExpToScale(Interpolate(ScaleToExp(_camera.ZToScale(_camera.Z, 0f)), _targetExp, _speed, _snapDistance)), 0f);
-            _camera.Rotation = Interpolate(_camera.Rotation, _targetRotation, _speed, _snapDistance);
         }
         private float Interpolate(float from, float target, float speed, float snapNear) {
             float result = MathHelper.Lerp(from, target, speed);
@@ -586,6 +601,16 @@ namespace GameProject {
                 new KeyboardCondition(Keys.RightAlt)
             );
 
+        ICondition _setHyperZoom =
+            new AllCondition(
+                new AnyCondition(
+                    new KeyboardCondition(Keys.LeftControl),
+                    new KeyboardCondition(Keys.RightControl)
+                ),
+                new Track.KeyboardCondition(Keys.Space)
+            );
+        ICondition _hyperZoom = new Track.KeyboardCondition(Keys.Space);
+
         bool _isDrawing = false;
         Vector2 _start;
         Vector2 _end;
@@ -610,6 +635,10 @@ namespace GameProject {
         float _expStart;
         Vector2 _zoomStart;
         Vector2 _pinCamera;
+
+        float _preservedExp = 0f;
+        float _hyperZoomExp = 4f;
+        bool _isHyperZoom = false;
 
         bool _showDebug = false;
 
