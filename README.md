@@ -1,6 +1,10 @@
 # Mitten
 Infinite canvas drawing application.
 
+## Builds
+
+Grab the builds <https://apos.itch.io/mitten>.
+
 ## Controls
 
 ### Draw
