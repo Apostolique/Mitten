@@ -366,7 +366,7 @@ namespace GameProject {
             _targetRotation = _camera.Rotation;
         }
 
-        public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, name);
+        public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, name);
         public static void SaveJson<T>(string name, T json) {
             string jsonPath = GetPath(name);
             string jsonString = JsonSerializer.Serialize(json, _options);
