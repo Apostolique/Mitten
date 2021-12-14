@@ -396,7 +396,11 @@ namespace GameProject {
             }
             for (int i = dd.RedoLines.Count - 1; i >= 0; i--) {
                 var l = dd.RedoLines[i];
-                _redoLines.Push(new Line(l.Id, new Vector2(l.A.X, l.A.Y), new Vector2(l.B.X, l.B.Y), l.Radius, new Color(l.Color.R, l.Color.G, l.Color.B)));
+                Color c = TWColor.Transparent;
+                if (l.Color != null) {
+                    c = new Color(l.Color.R, l.Color.G, l.Color.B);
+                }
+                _redoLines.Push(new Line(l.Id, new Vector2(l.A.X, l.A.Y), new Vector2(l.B.X, l.B.Y), l.Radius, c));
             }
 
             _camera.XY = new Vector2(dd.Camera.X, dd.Camera.Y);
