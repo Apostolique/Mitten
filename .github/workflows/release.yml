@@ -47,12 +47,12 @@ jobs:
         node-version: '14.x'
     - name: rcedit icon fix
       run: |
-        mkdir rcedit
-        cd rcedit
+        mkdir dep
+        cd dep
         npm init -y
         npm i rcedit
         cd ..
-        wine rcedit/node_modules/rcedit/bin/rcedit-x64.exe ./artifacts/windows/Mitten.exe --set-icon ./Platforms/DesktopGL/Icon.ico
+        wine dep/node_modules/rcedit/bin/rcedit-x64.exe ./artifacts/windows/Mitten.exe --set-icon ./Platforms/DesktopGL/Icon.ico
     - name: Publish Windows build to itch.io
       uses: josephbmanley/butler-publish-itchio-action@master
       env:
