@@ -36,11 +36,23 @@ jobs:
         sudo apt install wine64 p7zip-full
         wget -qO- https://raw.githubusercontent.com/MonoGame/MonoGame/master/Tools/MonoGame.Effect.Compiler/mgfxc_wine_setup.sh | sh
     - name: Build Windows
-      run: dotnet publish ${{ env.PROJECT_PATH }} -r win-x64 -c Release --output artifacts/windows
+      run: dotnet publish ${{ env.PROJECT_PATH }} -r win-x64 -c Release --output artifacts/windows --self-contained
     - name: Build Osx
-      run: dotnet publish ${{ env.PROJECT_PATH }} -r osx-x64 -c Release --output artifacts/osx
+      run: dotnet publish ${{ env.PROJECT_PATH }} -r osx-x64 -c Release --output artifacts/osx --self-contained
     - name: Build Linux
-      run: dotnet publish ${{ env.PROJECT_PATH }} -r linux-x64 -c Release --output artifacts/linux
+      run: dotnet publish ${{ env.PROJECT_PATH }} -r linux-x64 -c Release --output artifacts/linux --self-contained
+    - name: Use Node.js
+      uses: actions/setup-node@v1
+      with:
+        node-version: '14.x'
+    - name: rcedit icon fix
+      run: |
+        mkdir rcedit
+        cd rcedit
+        npm init -y
+        npm i rcedit
+        cd ..
+        wine rcedit/node_modules/rcedit/bin/rcedit-x64.exe ./artifacts/windows/Mitten.exe --set-icon ./Platforms/DesktopGL/Icon.ico
     - name: Publish Windows build to itch.io
       uses: josephbmanley/butler-publish-itchio-action@master
       env:
