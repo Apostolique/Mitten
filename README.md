@@ -1,6 +1,10 @@
 # Mitten
 Infinite canvas drawing application.
 
+## Showcase
+
+![Showcase](./Images/showcase.gif)
+
 ## Builds
 
 Grab the builds <https://apos.itch.io/mitten>.
