@@ -19,11 +19,11 @@
   <ItemGroup>
     <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.1.303" />
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.1.303" />
-    <PackageReference Include="Apos.Camera" Version="0.3.1" />
-    <PackageReference Include="Apos.Input" Version="2.4.1" />
-    <PackageReference Include="Apos.Shapes" Version="0.1.6" />
-    <PackageReference Include="Apos.Spatial" Version="0.2.1" />
-    <PackageReference Include="FontStashSharp.MonoGame" Version="1.0.4" />
+    <PackageReference Include="Apos.Camera" Version="0.3.2" />
+    <PackageReference Include="Apos.Input" Version="2.4.2" />
+    <PackageReference Include="Apos.Shapes" Version="0.1.9" />
+    <PackageReference Include="Apos.Spatial" Version="0.2.4" />
+    <PackageReference Include="FontStashSharp.MonoGame" Version="1.2.8" />
     <PackageReference Include="nulastudio.NetCoreBeauty" Version="1.2.9.3" />
   </ItemGroup>
 
