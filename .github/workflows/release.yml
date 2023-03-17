@@ -50,7 +50,7 @@ jobs:
         npm init -y
         npm i rcedit
         cd ..
-        wine dep/node_modules/rcedit/bin/rcedit-x64.exe ./artifacts/windows/Mitten.exe --set-icon ./Platforms/DesktopGL/Icon.ico
+        wine dep/node_modules/rcedit/bin/rcedit-x64.exe ./artifacts/windows/Mitten.exe --set-icon ./Platforms/DesktopGL/Icon.ico --set-product-version "${{ env.TAGVERSION }}"
     - name: Publish Windows build to itch.io
       uses: josephbmanley/butler-publish-itchio-action@master
       env:
