@@ -205,7 +205,7 @@ namespace GameProject {
             _sb.End();
 
             if (_pickColor.Held()) {
-                _cp.Draw(_fontSystem);
+                _cp.Draw(_fontSystem, _pickBackground.Held(), _bgColor);
             }
 
             if (_showDebug) {

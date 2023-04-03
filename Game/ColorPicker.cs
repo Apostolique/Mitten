@@ -43,10 +43,10 @@ namespace GameProject {
 
             return _colors[x][y];
         }
-        public void Draw(FontSystem fs) {
+        public void Draw(FontSystem fs, bool isBackground, Color bgColor) {
             var width = InputHelper.WindowWidth / (float)_colors.Length;
             _sb.Begin();
-            _sb.FillRectangle(new Vector2(0, 0), new Vector2(InputHelper.WindowWidth, InputHelper.WindowHeight), TWColor.Black);
+            _sb.FillRectangle(new Vector2(0, 0), new Vector2(InputHelper.WindowWidth, InputHelper.WindowHeight), isBackground ? bgColor : TWColor.Black);
             for (int i = 0; i < _colors.Length; i++) {
                 var height = InputHelper.WindowHeight / (float)_colors[i].Length;
                 for (int j = 0; j < _colors[i].Length; j++) {
