@@ -32,6 +32,8 @@ namespace GameProject {
         public static readonly Color Slate800 = new Color(30, 41, 59);
         /// <summary>Slate900 color (R:15,G:23,B:42,A:255).</summary>
         public static readonly Color Slate900 = new Color(15, 23, 42);
+        /// <summary>Slate950 color (R:2,G:6,B:23,A:255).</summary>
+        public static readonly Color Slate950 = new Color(2, 6, 23);
 
         /// <summary>Gray050 color (R:249,G:250,B:251,A:255).</summary>
         public static readonly Color Gray050 = new Color(249, 250, 251);
@@ -53,6 +55,8 @@ namespace GameProject {
         public static readonly Color Gray800 = new Color(31, 41, 55);
         /// <summary>Gray900 color (R:17,G:24,B:39,A:255).</summary>
         public static readonly Color Gray900 = new Color(17, 24, 39);
+        /// <summary>Gray950 color (R:3,G:7,B:18,A:255).</summary>
+        public static readonly Color Gray950 = new Color(3, 7, 18);
 
         /// <summary>Zinc050 color (R:250,G:250,B:250,A:255).</summary>
         public static readonly Color Zinc050 = new Color(250, 250, 250);
@@ -74,6 +78,8 @@ namespace GameProject {
         public static readonly Color Zinc800 = new Color(39, 39, 42);
         /// <summary>Zinc900 color (R:24,G:24,B:27,A:255).</summary>
         public static readonly Color Zinc900 = new Color(24, 24, 27);
+        /// <summary>Zinc950 color (R:9,G:9,B:11,A:255).</summary>
+        public static readonly Color Zinc950 = new Color(9, 9, 11);
 
         /// <summary>Neutral050 color (R:250,G:250,B:250,A:255).</summary>
         public static readonly Color Neutral050 = new Color(250, 250, 250);
@@ -95,6 +101,8 @@ namespace GameProject {
         public static readonly Color Neutral800 = new Color(38, 38, 38);
         /// <summary>Neutral900 color (R:23,G:23,B:23,A:255).</summary>
         public static readonly Color Neutral900 = new Color(23, 23, 23);
+        /// <summary>Neutral950 color (R:10,G:10,B:10,A:255).</summary>
+        public static readonly Color Neutral950 = new Color(10, 10, 10);
 
         /// <summary>Stone050 color (R:250,G:250,B:249,A:255).</summary>
         public static readonly Color Stone050 = new Color(250, 250, 249);
@@ -116,6 +124,8 @@ namespace GameProject {
         public static readonly Color Stone800 = new Color(41, 37, 36);
         /// <summary>Stone900 color (R:28,G:25,B:23,A:255).</summary>
         public static readonly Color Stone900 = new Color(28, 25, 23);
+        /// <summary>Stone950 color (R:12,G:10,B:9,A:255).</summary>
+        public static readonly Color Stone950 = new Color(12, 10, 9);
 
         /// <summary>Red050 color (R:254,G:242,B:242,A:255).</summary>
         public static readonly Color Red050 = new Color(254, 242, 242);
@@ -137,6 +147,8 @@ namespace GameProject {
         public static readonly Color Red800 = new Color(153, 27, 27);
         /// <summary>Red900 color (R:127,G:29,B:29,A:255).</summary>
         public static readonly Color Red900 = new Color(127, 29, 29);
+        /// <summary>Red950 color (R:69,G:10,B:10,A:255).</summary>
+        public static readonly Color Red950 = new Color(69, 10, 10);
 
         /// <summary>Orange050 color (R:255,G:247,B:237,A:255).</summary>
         public static readonly Color Orange050 = new Color(255, 247, 237);
@@ -158,6 +170,8 @@ namespace GameProject {
         public static readonly Color Orange800 = new Color(154, 52, 18);
         /// <summary>Orange900 color (R:124,G:45,B:18,A:255).</summary>
         public static readonly Color Orange900 = new Color(124, 45, 18);
+        /// <summary>Orange950 color (R:67,G:20,B:7,A:255).</summary>
+        public static readonly Color Orange950 = new Color(67, 20, 7);
 
         /// <summary>Amber050 color (R:255,G:251,B:235,A:255).</summary>
         public static readonly Color Amber050 = new Color(255, 251, 235);
@@ -179,6 +193,8 @@ namespace GameProject {
         public static readonly Color Amber800 = new Color(146, 64, 14);
         /// <summary>Amber900 color (R:120,G:53,B:15,A:255).</summary>
         public static readonly Color Amber900 = new Color(120, 53, 15);
+        /// <summary>Amber950 color (R:69,G:26,B:3,A:255).</summary>
+        public static readonly Color Amber950 = new Color(69, 26, 3);
 
         /// <summary>Yellow050 color (R:254,G:252,B:232,A:255).</summary>
         public static readonly Color Yellow050 = new Color(254, 252, 232);
@@ -200,6 +216,8 @@ namespace GameProject {
         public static readonly Color Yellow800 = new Color(133, 77, 14);
         /// <summary>Yellow900 color (R:113,G:63,B:18,A:255).</summary>
         public static readonly Color Yellow900 = new Color(113, 63, 18);
+        /// <summary>Yellow950 color (R:66,G:32,B:6,A:255).</summary>
+        public static readonly Color Yellow950 = new Color(66, 32, 6);
 
         /// <summary>Lime050 color (R:247,G:254,B:231,A:255).</summary>
         public static readonly Color Lime050 = new Color(247, 254, 231);
@@ -221,6 +239,8 @@ namespace GameProject {
         public static readonly Color Lime800 = new Color(63, 98, 18);
         /// <summary>Lime900 color (R:54,G:83,B:20,A:255).</summary>
         public static readonly Color Lime900 = new Color(54, 83, 20);
+        /// <summary>Lime950 color (R:26,G:46,B:5,A:255).</summary>
+        public static readonly Color Lime950 = new Color(26, 46, 5);
 
         /// <summary>Green050 color (R:240,G:253,B:244,A:255).</summary>
         public static readonly Color Green050 = new Color(240, 253, 244);
@@ -242,6 +262,8 @@ namespace GameProject {
         public static readonly Color Green800 = new Color(22, 101, 52);
         /// <summary>Green900 color (R:20,G:83,B:45,A:255).</summary>
         public static readonly Color Green900 = new Color(20, 83, 45);
+        /// <summary>Green950 color (R:5,G:46,B:22,A:255).</summary>
+        public static readonly Color Green950 = new Color(5, 46, 22);
 
         /// <summary>Emerald050 color (R:236,G:253,B:245,A:255).</summary>
         public static readonly Color Emerald050 = new Color(236, 253, 245);
@@ -263,6 +285,8 @@ namespace GameProject {
         public static readonly Color Emerald800 = new Color(6, 95, 70);
         /// <summary>Emerald900 color (R:6,G:78,B:59,A:255).</summary>
         public static readonly Color Emerald900 = new Color(6, 78, 59);
+        /// <summary>Emerald950 color (R:2,G:44,B:34,A:255).</summary>
+        public static readonly Color Emerald950 = new Color(2, 44, 34);
 
         /// <summary>Teal050 color (R:240,G:253,B:250,A:255).</summary>
         public static readonly Color Teal050 = new Color(240, 253, 250);
@@ -284,6 +308,8 @@ namespace GameProject {
         public static readonly Color Teal800 = new Color(17, 94, 89);
         /// <summary>Teal900 color (R:19,G:78,B:74,A:255).</summary>
         public static readonly Color Teal900 = new Color(19, 78, 74);
+        /// <summary>Teal950 color (R:4,G:47,B:46,A:255).</summary>
+        public static readonly Color Teal950 = new Color(4, 47, 46);
 
         /// <summary>Cyan050 color (R:236,G:254,B:255,A:255).</summary>
         public static readonly Color Cyan050 = new Color(236, 254, 255);
@@ -305,6 +331,8 @@ namespace GameProject {
         public static readonly Color Cyan800 = new Color(21, 94, 117);
         /// <summary>Cyan900 color (R:22,G:78,B:99,A:255).</summary>
         public static readonly Color Cyan900 = new Color(22, 78, 99);
+        /// <summary>Cyan950 color (R:8,G:51,B:68,A:255).</summary>
+        public static readonly Color Cyan950 = new Color(8, 51, 68);
 
         /// <summary>Sky050 color (R:240,G:249,B:255,A:255).</summary>
         public static readonly Color Sky050 = new Color(240, 249, 255);
@@ -326,6 +354,8 @@ namespace GameProject {
         public static readonly Color Sky800 = new Color(7, 89, 133);
         /// <summary>Sky900 color (R:12,G:74,B:110,A:255).</summary>
         public static readonly Color Sky900 = new Color(12, 74, 110);
+        /// <summary>Sky950 color (R:8,G:47,B:73,A:255).</summary>
+        public static readonly Color Sky950 = new Color(8, 47, 73);
 
         /// <summary>Blue050 color (R:239,G:246,B:255,A:255).</summary>
         public static readonly Color Blue050 = new Color(239, 246, 255);
@@ -347,6 +377,8 @@ namespace GameProject {
         public static readonly Color Blue800 = new Color(30, 64, 175);
         /// <summary>Blue900 color (R:30,G:58,B:138,A:255).</summary>
         public static readonly Color Blue900 = new Color(30, 58, 138);
+        /// <summary>Blue950 color (R:23,G:37,B:84,A:255).</summary>
+        public static readonly Color Blue950 = new Color(23, 37, 84);
 
         /// <summary>Indigo050 color (R:238,G:242,B:255,A:255).</summary>
         public static readonly Color Indigo050 = new Color(238, 242, 255);
@@ -368,6 +400,8 @@ namespace GameProject {
         public static readonly Color Indigo800 = new Color(55, 48, 163);
         /// <summary>Indigo900 color (R:49,G:46,B:129,A:255).</summary>
         public static readonly Color Indigo900 = new Color(49, 46, 129);
+        /// <summary>Indigo950 color (R:30,G:27,B:75,A:255).</summary>
+        public static readonly Color Indigo950 = new Color(30, 27, 75);
 
         /// <summary>Violet050 color (R:245,G:243,B:255,A:255).</summary>
         public static readonly Color Violet050 = new Color(245, 243, 255);
@@ -389,6 +423,8 @@ namespace GameProject {
         public static readonly Color Violet800 = new Color(91, 33, 182);
         /// <summary>Violet900 color (R:76,G:29,B:149,A:255).</summary>
         public static readonly Color Violet900 = new Color(76, 29, 149);
+        /// <summary>Violet950 color (R:46,G:16,B:101,A:255).</summary>
+        public static readonly Color Violet950 = new Color(46, 16, 101);
 
         /// <summary>Purple050 color (R:250,G:245,B:255,A:255).</summary>
         public static readonly Color Purple050 = new Color(250, 245, 255);
@@ -410,6 +446,8 @@ namespace GameProject {
         public static readonly Color Purple800 = new Color(107, 33, 168);
         /// <summary>Purple900 color (R:88,G:28,B:135,A:255).</summary>
         public static readonly Color Purple900 = new Color(88, 28, 135);
+        /// <summary>Purple950 color (R:59,G:7,B:100,A:255).</summary>
+        public static readonly Color Purple950 = new Color(59, 7, 100);
 
         /// <summary>Fuchsia050 color (R:253,G:244,B:255,A:255).</summary>
         public static readonly Color Fuchsia050 = new Color(253, 244, 255);
@@ -431,6 +469,8 @@ namespace GameProject {
         public static readonly Color Fuchsia800 = new Color(134, 25, 143);
         /// <summary>Fuchsia900 color (R:112,G:26,B:117,A:255).</summary>
         public static readonly Color Fuchsia900 = new Color(112, 26, 117);
+        /// <summary>Fuchsia950 color (R:74,G:4,B:78,A:255).</summary>
+        public static readonly Color Fuchsia950 = new Color(74, 4, 78);
 
         /// <summary>Pink050 color (R:253,G:242,B:248,A:255).</summary>
         public static readonly Color Pink050 = new Color(253, 242, 248);
@@ -452,6 +492,8 @@ namespace GameProject {
         public static readonly Color Pink800 = new Color(157, 23, 77);
         /// <summary>Pink900 color (R:131,G:24,B:67,A:255).</summary>
         public static readonly Color Pink900 = new Color(131, 24, 67);
+        /// <summary>Pink950 color (R:80,G:7,B:36,A:255).</summary>
+        public static readonly Color Pink950 = new Color(80, 7, 36);
 
         /// <summary>Rose050 color (R:255,G:241,B:242,A:255).</summary>
         public static readonly Color Rose050 = new Color(255, 241, 242);
@@ -473,5 +515,7 @@ namespace GameProject {
         public static readonly Color Rose800 = new Color(159, 18, 57);
         /// <summary>Rose900 color (R:136,G:19,B:55,A:255).</summary>
         public static readonly Color Rose900 = new Color(136, 19, 55);
+        /// <summary>Rose950 color (R:76,G:5,B:25,A:255).</summary>
+        public static readonly Color Rose950 = new Color(76, 5, 25);
     }
 }
