@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.IO;
+using System.Text.Json.Serialization.Metadata;
 
 // TODO:
 //       Add tablet pressure sensitivity.
@@ -26,7 +27,7 @@ namespace GameProject {
             IsMouseVisible = true;
             Content.RootDirectory = "Content";
 
-            _settings = EnsureJson<Settings>("Settings.json");
+            _settings = EnsureJson<Settings>("Settings.json", SettingsContext.Default.Settings);
         }
 
         protected override void Initialize() {
@@ -75,7 +76,7 @@ namespace GameProject {
                 SaveWindow();
             }
 
-            SaveJson<Settings>("Settings.json", _settings);
+            SaveJson<Settings>("Settings.json", _settings, SettingsContext.Default.Settings);
 
             base.UnloadContent();
         }
@@ -371,10 +372,10 @@ namespace GameProject {
 
             dd.Camera = new DrawingData.Cam { X = _camera.X, Y = _camera.Y, Z = _camera.Z, Rotation = _camera.Rotation };
 
-            SaveJson<DrawingData>("Drawing.json", dd);
+            SaveJson<DrawingData>("Drawing.json", dd, DrawingDataContext.Default.DrawingData);
         }
         private void LoadDrawing() {
-            DrawingData dd = EnsureJson<DrawingData>("Drawing.json");
+            DrawingData dd = EnsureJson<DrawingData>("Drawing.json", DrawingDataContext.Default.DrawingData);
             _nextId = dd.NextId;
             _group = (_nextId, _nextId);
             _bgColor = new Color(dd.BackgroundColor.R, dd.BackgroundColor.G, dd.BackgroundColor.B);
@@ -412,20 +413,20 @@ namespace GameProject {
         }
 
         public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, name);
-        public static void SaveJson<T>(string name, T json) {
+        public static void SaveJson<T>(string name, T json, JsonTypeInfo<T> typeInfo) {
             string jsonPath = GetPath(name);
-            string jsonString = JsonSerializer.Serialize(json, _options);
+            string jsonString = JsonSerializer.Serialize(json, typeInfo);
             File.WriteAllText(jsonPath, jsonString);
         }
-        public static T EnsureJson<T>(string name) where T : new() {
+        public static T EnsureJson<T>(string name, JsonTypeInfo<T> typeInfo) where T : new() {
             T json;
             string jsonPath = GetPath(name);
 
             if (File.Exists(jsonPath)) {
-                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), _options)!;
+                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), typeInfo)!;
             } else {
                 json = new T();
-                string jsonString = JsonSerializer.Serialize(json, _options);
+                string jsonString = JsonSerializer.Serialize(json, typeInfo);
                 File.WriteAllText(jsonPath, jsonString);
             }
 
