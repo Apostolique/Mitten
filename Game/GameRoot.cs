@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.IO;
+using WintabDN;
 
 // TODO:
 //       Add tablet pressure sensitivity.
@@ -36,6 +37,26 @@ namespace GameProject {
             _graphics.SynchronizeWithVerticalRetrace = _settings.IsVSync;
 
             _settings.IsFullscreen = _settings.IsFullscreen || _settings.IsBorderless;
+
+            SDL2.SDL.SDL_SysWMinfo systemInfo = new SDL2.SDL.SDL_SysWMinfo();
+            SDL2.SDL.SDL_VERSION(out systemInfo.version);
+            SDL2.SDL.SDL_GetWindowWMInfo(Window.Handle, ref systemInfo);
+
+            CWintabContext logContext = CWintabInfo.GetDefaultSystemContext(ECTXOptionValues.CXO_MESSAGES);
+            logContext.Open(systemInfo.info.win.window, true);
+            _data = new CWintabData(logContext);
+
+            // while (true) {
+            //     uint count = 0;
+            //     WintabPacket[] results = _data.GetDataPackets(1, true, ref count);
+            //     for (int i = 0; i < count; i++) {
+            //         int x = results[i].pkX;
+            //         int y = results[i].pkY;
+            //         uint pressure = results[i].pkNormalPressure;
+
+            //         Console.WriteLine($"X: {x} -- Y: {y} ::: {pressure}");
+            //     }
+            // }
 
             RestoreWindow();
             if (_settings.IsFullscreen) {
@@ -81,6 +102,8 @@ namespace GameProject {
         }
 
         protected override void Update(GameTime gameTime) {
+            UpdateTablet();
+
             InputHelper.UpdateSetup();
 
             if (_quit.Pressed())
@@ -122,7 +145,7 @@ namespace GameProject {
                         _end = _mouseWorld;
 
                         if (_start != _end && !_line.Held()) {
-                            CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
+                            CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _tabletPressure);
                             _start = _mouseWorld;
                         }
                     }
@@ -134,7 +157,7 @@ namespace GameProject {
                             _end += new Vector2(_camera.ScreenToWorldScale());
                         }
 
-                        CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
+                        CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _tabletPressure);
                         CreateGroup();
                     }
                 }
@@ -178,7 +201,7 @@ namespace GameProject {
                 inView++;
             }
             if (_isDrawing) {
-                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), fgColor);
+                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _tabletPressure, fgColor);
             }
             if (_thickness.Held()) {
                 _sb.FillCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale(), fgColor);
@@ -187,12 +210,14 @@ namespace GameProject {
                     _sb.BorderCircle(_camera.ScreenToWorld(_thicknessStart), (_radius - 2f) * _camera.ScreenToWorldScale(), TWColor.White, 2f);
                 }
             } else {
-                _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), fgColor);
+                _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale() * _tabletPressure, fgColor);
                 if (_isErasing) {
-                    _sb.BorderCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), TWColor.Black, 6f);
-                    _sb.BorderCircle(_mouseWorld, (_radius - 2f) * _camera.ScreenToWorldScale(), TWColor.White, 2f);
+                    _sb.BorderCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale() * _tabletPressure, TWColor.Black, 6f);
+                    _sb.BorderCircle(_mouseWorld, (_radius - 2f) * _camera.ScreenToWorldScale() * _tabletPressure, TWColor.White, 2f);
                 }
             }
+
+            // _sb.FillCircle(_tabletXY, 100f * _tabletPressure, TWColor.White);
             _sb.End();
 
             _sb.Begin();
@@ -217,6 +242,27 @@ namespace GameProject {
             }
 
             base.Draw(gameTime);
+        }
+
+        private void UpdateTablet() {
+            float maxPressure = CWintabInfo.GetMaxPressure();
+            // _tabletPressure = 1f;
+
+            uint count = 0;
+            WintabPacket[] results = _data.GetDataPackets(1, true, ref count);
+            for (int i = 0; i < count; i++) {
+                int x = results[i].pkX;
+                int y = results[i].pkY;
+                float pressure = results[i].pkNormalPressure / maxPressure;
+
+                y = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height - y - Window.ClientBounds.Y;
+                x = x - Window.ClientBounds.X;
+
+                Console.WriteLine($"X: {x} -- Y: {y} ::: {pressure}");
+                _tabletXY = _camera.ScreenToWorld(x, y);
+                _tabletPressure = pressure;
+                // _tabletXY = new Vector2(x, y);
+            }
         }
 
         private void UpdateCamera(GameTime gameTime) {
@@ -674,5 +720,10 @@ namespace GameProject {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             WriteIndented = true,
         };
+
+        CWintabData _data;
+
+        Vector2 _tabletXY = Vector2.Zero;
+        float _tabletPressure = 0f;
     }
 }
