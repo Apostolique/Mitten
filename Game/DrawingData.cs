@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace GameProject {
     public class DrawingData {
@@ -38,4 +39,10 @@ namespace GameProject {
             public int Last { get; set; } = 0;
         }
     }
+
+    [JsonSourceGenerationOptionsAttribute(
+        PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+        WriteIndented = true)]
+    [JsonSerializable(typeof(DrawingData))]
+    internal partial class DrawingDataContext : JsonSerializerContext { }
 }

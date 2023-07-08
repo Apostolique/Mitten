@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace GameProject {
     public class Settings {
         public int X { get; set; } = 320;
@@ -9,4 +11,10 @@ namespace GameProject {
         public bool IsFullscreen { get; set; } = false;
         public bool IsBorderless { get; set; } = false;
     }
+
+    [JsonSourceGenerationOptionsAttribute(
+        PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+        WriteIndented = true)]
+    [JsonSerializable(typeof(Settings))]
+    internal partial class SettingsContext : JsonSerializerContext { }
 }
