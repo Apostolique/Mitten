@@ -538,10 +538,6 @@ namespace GameProject {
                 _redoLines.Push(new Line(l.Id, new Vector2(l.A.X, l.A.Y), new Vector2(l.B.X, l.B.Y), l.Radius, c));
             }
 
-            _xy = new Vector2Tween(Vector2.Zero, Vector2.Zero, 0, Easing.QuintOut);
-            _exp = new FloatTween(0f, 0f, 0, Easing.QuintOut);
-            _rotation = new FloatTween(0f, 0f, 0, Easing.QuintOut);
-
             SetXYTween(new Vector2(dd.Camera.X, dd.Camera.Y), 0);
             SetExpTween(ScaleToExp(_camera.ZToScale(dd.Camera.Z, 0f)), 0);
             SetRotationTween(dd.Camera.Rotation, 0);
@@ -779,7 +775,7 @@ namespace GameProject {
                 new KeyboardCondition(Keys.RightControl)
             );
 
-        Dictionary<string, DrawingData.Cam> _savedCams;
+        Dictionary<string, DrawingData.Cam> _savedCams = null!;
 
         ICondition _loadCam1 = new Track.KeyboardCondition(Keys.D1);
         ICondition _saveCam1 =
@@ -883,15 +879,10 @@ namespace GameProject {
         static ITween<float> _zoomSidebarWait = _zoomSidebarStart.Wait(1000);
         ITween<float> _zoomSidebarTween = _zoomSidebarWait.To(0f, 1000, Easing.QuintOut);
 
-        Vector2Tween _xy;
-        FloatTween _exp;
-        FloatTween _rotation;
+        Vector2Tween _xy = new Vector2Tween(Vector2.Zero, Vector2.Zero, 0, Easing.QuintOut);
+        FloatTween _exp = new FloatTween(0f, 0f, 0, Easing.QuintOut);
+        FloatTween _rotation = new FloatTween(0f, 0f, 0, Easing.QuintOut);
 
         FPSCounter _fps = new FPSCounter();
-
-        private static JsonSerializerOptions _options = new JsonSerializerOptions {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            WriteIndented = true,
-        };
     }
 }
