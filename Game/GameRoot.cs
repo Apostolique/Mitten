@@ -542,8 +542,8 @@ namespace GameProject {
             _exp = new FloatTween(0f, 0f, 0, Easing.QuintOut);
             _rotation = new FloatTween(0f, 0f, 0, Easing.QuintOut);
 
-            SetXYTween(new Vector2(dd.Camera.X, dd.Camera.Y));
-            SetExpTween(ScaleToExp(_camera.ZToScale(_camera.Z, 0f)), 0);
+            SetXYTween(new Vector2(dd.Camera.X, dd.Camera.Y), 0);
+            SetExpTween(ScaleToExp(_camera.ZToScale(dd.Camera.Z, 0f)), 0);
             SetRotationTween(dd.Camera.Rotation, 0);
 
             _savedCams = dd.SavedCams;
@@ -847,7 +847,8 @@ namespace GameProject {
         ICondition _loadCam0 =
             new AnyCondition(
                 new Track.KeyboardCondition(Keys.D0),
-                new MouseCondition(MouseButton.XButton1)
+                new MouseCondition(MouseButton.XButton1),
+                new MouseCondition(MouseButton.XButton2)
             );
 
         bool _isErasing = false;
