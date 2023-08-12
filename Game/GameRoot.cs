@@ -371,10 +371,10 @@ namespace GameProject {
         private void LoadCam(string key) {
             if (_savedCams.TryGetValue(key, out DrawingData.Cam? cam)) {
                 _savedCams["0"] = new DrawingData.Cam {
-                    X = _camera.X,
-                    Y = _camera.Y,
-                    Z = _camera.Z,
-                    Rotation = _camera.Rotation
+                    X = _xy.B.X,
+                    Y = _xy.B.Y,
+                    Z = _camera.ScaleToZ(ExpToScale(_exp.B), 0f),
+                    Rotation = _rotation.B
                 };
 
                 SetXYTween(cam.X, cam.Y);
