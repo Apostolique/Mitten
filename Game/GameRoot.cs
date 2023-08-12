@@ -3,6 +3,7 @@ using Apos.Input;
 using Track = Apos.Input.Track;
 using Apos.Shapes;
 using Apos.Spatial;
+using Apos.Tweens;
 using FontStashSharp;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -61,6 +62,7 @@ namespace GameProject {
             _undoGroups = new Stack<(int, int)>();
             _redoGroups = new Stack<(int, int)>();
             _redoLines = new Stack<Line>();
+            _savedCams = new Dictionary<string, DrawingData.Cam>();
 
             _camera = new Camera(new DefaultViewport(GraphicsDevice, Window));
 
@@ -83,6 +85,7 @@ namespace GameProject {
 
         protected override void Update(GameTime gameTime) {
             InputHelper.UpdateSetup();
+            TweenHelper.UpdateSetup(gameTime);
 
             if (_quit.Pressed())
                 Exit();
@@ -157,6 +160,65 @@ namespace GameProject {
                 }
             }
 
+            if (_saveCam1.Pressed()) {
+                SaveCam("1");
+            }
+            if (_loadCam1.Pressed()) {
+                LoadCam("1");
+            }
+            if (_saveCam2.Pressed()) {
+                SaveCam("2");
+            }
+            if (_loadCam2.Pressed()) {
+                LoadCam("2");
+            }
+            if (_saveCam3.Pressed()) {
+                SaveCam("3");
+            }
+            if (_loadCam3.Pressed()) {
+                LoadCam("3");
+            }
+            if (_saveCam4.Pressed()) {
+                SaveCam("4");
+            }
+            if (_loadCam4.Pressed()) {
+                LoadCam("4");
+            }
+            if (_saveCam5.Pressed()) {
+                SaveCam("5");
+            }
+            if (_loadCam5.Pressed()) {
+                LoadCam("5");
+            }
+            if (_saveCam6.Pressed()) {
+                SaveCam("6");
+            }
+            if (_loadCam6.Pressed()) {
+                LoadCam("6");
+            }
+            if (_saveCam7.Pressed()) {
+                SaveCam("7");
+            }
+            if (_loadCam7.Pressed()) {
+                LoadCam("7");
+            }
+            if (_saveCam8.Pressed()) {
+                SaveCam("8");
+            }
+            if (_loadCam8.Pressed()) {
+                LoadCam("8");
+            }
+            if (_saveCam9.Pressed()) {
+                SaveCam("9");
+            }
+            if (_loadCam9.Pressed()) {
+                LoadCam("9");
+            }
+
+            if (_loadCam0.Pressed()) {
+                LoadCam("0");
+            }
+
             InputHelper.UpdateCleanup();
             base.Update(gameTime);
         }
@@ -198,10 +260,10 @@ namespace GameProject {
 
             _sb.Begin();
             var camExp = ScaleToExp(_camera.ZToScale(_camera.Z, 0f));
-            if (_showZoomUntil > gameTime.TotalGameTime.Ticks) {
+            if (_zoomSidebarTween.Value > 0f) {
                 var length = _minExp - _maxExp;
                 var percent = (camExp - _maxExp) / length;
-                _sb.DrawLine(new Vector2(0, GraphicsDevice.Viewport.Height), new Vector2(0, GraphicsDevice.Viewport.Height * percent), 10f, TWColor.White * 0.2f, TWColor.Black, 2f);
+                _sb.DrawLine(new Vector2(0, GraphicsDevice.Viewport.Height), new Vector2(0, GraphicsDevice.Viewport.Height * percent), 10f, TWColor.White * _zoomSidebarTween.Value, TWColor.Black, 2f);
             }
             _sb.End();
 
@@ -223,14 +285,14 @@ namespace GameProject {
         private void UpdateCamera(GameTime gameTime) {
             if (_hyperZoom.Pressed()) {
                 _preservedExp = _targetExp;
-                _targetExp = _preservedExp + _hyperZoomExp;
+                SetExpTween(_preservedExp + _hyperZoomExp);
             }
             if (_hyperZoom.Held()) {
-                _targetExp = _preservedExp + _hyperZoomExp;
+                SetExpTween(_preservedExp + _hyperZoomExp);
 
-                _showZoomUntil = gameTime.TotalGameTime.Ticks + TimeSpan.TicksPerSecond;
+                ShowZoomSidebar();
             } else if (_hyperZoom.Released()) {
-                _targetExp = _preservedExp;
+                SetExpTween(_preservedExp);
             } else {
                 if (_dragZoom.Held()) {
                     if (_dragZoom.Pressed()) {
@@ -240,29 +302,28 @@ namespace GameProject {
                         _pinCamera = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
                     }
                     var diffY = (InputHelper.NewMouse.Y - _zoomStart.Y) / 100f;
-                    _targetExp = MathHelper.Clamp(_expStart + diffY, _maxExp, _minExp);
-                    _camera.Z = _camera.ScaleToZ(ExpToScale(_targetExp), 0f);
+                    SetExpTween(MathHelper.Clamp(_expStart + diffY, _maxExp, _minExp), 0);
 
-                    _showZoomUntil = gameTime.TotalGameTime.Ticks + TimeSpan.TicksPerSecond;
+                    ShowZoomSidebar();
                 } else if (MouseCondition.Scrolled() && !_thickness.Held()) {
-                    _targetExp = MathHelper.Clamp(_targetExp - MouseCondition.ScrollDelta * _expDistance, _maxExp, _minExp);
+                    SetExpTween(MathHelper.Clamp(_targetExp - MouseCondition.ScrollDelta * _expDistance, _maxExp, _minExp));
 
-                    _showZoomUntil = gameTime.TotalGameTime.Ticks + TimeSpan.TicksPerSecond;
+                    ShowZoomSidebar();
                 }
             }
 
             if (_rotateLeft.Pressed()) {
-                _targetRotation += MathHelper.PiOver4;
+                SetRotationTween(_rotation.B + MathHelper.PiOver4);
             }
             if (_rotateRight.Pressed()) {
-                _targetRotation -= MathHelper.PiOver4;
+                SetRotationTween(_rotation.B - MathHelper.PiOver4);
             }
 
-            _camera.Z = _camera.ScaleToZ(ExpToScale(Interpolate(ScaleToExp(_camera.ZToScale(_camera.Z, 0f)), _targetExp, _speed, _snapDistance)), 0f);
-            _camera.Rotation = Interpolate(_camera.Rotation, _targetRotation, _speed, _snapDistance);
+            _camera.Z = _camera.ScaleToZ(ExpToScale(_exp.Value), 0f);
+            _camera.Rotation = _rotation.Value;
 
             if (_dragZoom.Held()) {
-                _camera.XY += _dragAnchor - _camera.ScreenToWorld(_pinCamera);
+                SetXYTween(_xy.Value + _dragAnchor - _camera.ScreenToWorld(_pinCamera), 0);
                 _mouseWorld = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
             } else {
                 _mouseWorld = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
@@ -271,10 +332,12 @@ namespace GameProject {
                     _dragAnchor = _mouseWorld;
                 }
                 if (_dragCamera.Held()) {
-                    _camera.XY += _dragAnchor - _mouseWorld;
+                    SetXYTween(_xy.Value + _dragAnchor - _mouseWorld, 0);
                     _mouseWorld = _dragAnchor;
                 }
             }
+
+            _camera.XY = _xy.Value;
         }
         private float Interpolate(float from, float target, float speed, float snapNear) {
             float result = MathHelper.Lerp(from, target, speed);
@@ -296,6 +359,74 @@ namespace GameProject {
         }
         private float ExpToScale(float exp) {
             return MathF.Exp(-exp);
+        }
+        private void SaveCam(string key) {
+            _savedCams[key] = new DrawingData.Cam {
+                X = _camera.X,
+                Y = _camera.Y,
+                Z = _camera.Z,
+                Rotation = _camera.Rotation
+            };
+        }
+        private void LoadCam(string key) {
+            if (_savedCams.TryGetValue(key, out DrawingData.Cam? cam)) {
+                _savedCams["0"] = new DrawingData.Cam {
+                    X = _camera.X,
+                    Y = _camera.Y,
+                    Z = _camera.Z,
+                    Rotation = _camera.Rotation
+                };
+
+                SetXYTween(cam.X, cam.Y);
+                SetZTween(cam.Z);
+                SetRotationTween(cam.Rotation);
+                ShowZoomSidebar();
+            }
+        }
+        private void SetXYTween(float targetX, float targetY, long duration = 1200) {
+            SetXYTween(new Vector2(targetX, targetY), duration);
+        }
+        private void SetXYTween(Vector2 target, long duration = 1200) {
+            _xy.A = _xy.Value;
+            _xy.B = target;
+            _xy.StartTime = TweenHelper.TotalMS;
+            _xy.Duration = duration;
+        }
+        private void SetExpTween(float target, long duration = 1200) {
+            _targetExp = target;
+            _exp.A = _exp.Value;
+            _exp.B = _targetExp;
+            _exp.StartTime = TweenHelper.TotalMS;
+            _exp.Duration = duration;
+            ShowZoomSidebar();
+        }
+        private void SetZTween(float target, long duration = 1200) {
+            _targetExp = ScaleToExp(_camera.ZToScale(target, 0f));
+            _exp.A = _exp.Value;
+            _exp.B = _targetExp;
+            _exp.StartTime = TweenHelper.TotalMS;
+            _exp.Duration = duration;
+            ShowZoomSidebar();
+        }
+        private void SetRotationTween(float target, long duration = 1200) {
+            _rotation.A = _rotation.Value;
+            _rotation.B = target;
+            _rotation.StartTime = TweenHelper.TotalMS;
+            _rotation.Duration = duration;
+        }
+        private void ShowZoomSidebar() {
+            if (TweenHelper.TotalMS >= _zoomSidebarTween.StartTime + _zoomSidebarTween.Duration) {
+                _zoomSidebarStart.StartTime = TweenHelper.TotalMS;
+                _zoomSidebarStart.A = 0f;
+                _zoomSidebarStart.B = 0.2f;
+            } else if (TweenHelper.TotalMS < _zoomSidebarStart.StartTime + _zoomSidebarStart.Duration) {
+
+            } else if (TweenHelper.TotalMS < _zoomSidebarTween.StartTime + _zoomSidebarTween.Duration) {
+                _zoomSidebarStart.A = _zoomSidebarTween.Value;
+                _zoomSidebarStart.StartTime = TweenHelper.TotalMS;
+            } else {
+                _zoomSidebarStart.StartTime = TweenHelper.TotalMS - _zoomSidebarStart.Duration;
+            }
         }
 
         private void CreateLine(Vector2 a, Vector2 b, float radius) {
@@ -372,6 +503,8 @@ namespace GameProject {
 
             dd.Camera = new DrawingData.Cam { X = _camera.X, Y = _camera.Y, Z = _camera.Z, Rotation = _camera.Rotation };
 
+            dd.SavedCams = _savedCams;
+
             SaveJson<DrawingData>("Drawing.json", dd, DrawingDataContext.Default.DrawingData);
         }
         private void LoadDrawing() {
@@ -405,11 +538,15 @@ namespace GameProject {
                 _redoLines.Push(new Line(l.Id, new Vector2(l.A.X, l.A.Y), new Vector2(l.B.X, l.B.Y), l.Radius, c));
             }
 
-            _camera.XY = new Vector2(dd.Camera.X, dd.Camera.Y);
-            _camera.Z = dd.Camera.Z;
-            _camera.Rotation = dd.Camera.Rotation;
-            _targetExp = ScaleToExp(_camera.ZToScale(_camera.Z, 0f));
-            _targetRotation = _camera.Rotation;
+            _xy = new Vector2Tween(Vector2.Zero, Vector2.Zero, 0, Easing.QuintOut);
+            _exp = new FloatTween(0f, 0f, 0, Easing.QuintOut);
+            _rotation = new FloatTween(0f, 0f, 0, Easing.QuintOut);
+
+            SetXYTween(new Vector2(dd.Camera.X, dd.Camera.Y));
+            SetExpTween(ScaleToExp(_camera.ZToScale(_camera.Z, 0f)), 0);
+            SetRotationTween(dd.Camera.Rotation, 0);
+
+            _savedCams = dd.SavedCams;
         }
 
         public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, name);
@@ -636,6 +773,83 @@ namespace GameProject {
 
         ICondition _toggleEraser = new KeyboardCondition(Keys.E);
 
+        static ICondition _ctrl =
+            new AnyCondition(
+                new KeyboardCondition(Keys.LeftControl),
+                new KeyboardCondition(Keys.RightControl)
+            );
+
+        Dictionary<string, DrawingData.Cam> _savedCams;
+
+        ICondition _loadCam1 = new Track.KeyboardCondition(Keys.D1);
+        ICondition _saveCam1 =
+            new AllCondition(
+                _ctrl,
+                new Track.KeyboardCondition(Keys.D1)
+            );
+
+        ICondition _loadCam2 = new Track.KeyboardCondition(Keys.D2);
+        ICondition _saveCam2 =
+            new AllCondition(
+                _ctrl,
+                new Track.KeyboardCondition(Keys.D2)
+            );
+
+        ICondition _loadCam3 = new Track.KeyboardCondition(Keys.D3);
+        ICondition _saveCam3 =
+            new AllCondition(
+                _ctrl,
+                new Track.KeyboardCondition(Keys.D3)
+            );
+
+        ICondition _loadCam4 = new Track.KeyboardCondition(Keys.D4);
+        ICondition _saveCam4 =
+            new AllCondition(
+                _ctrl,
+                new Track.KeyboardCondition(Keys.D4)
+            );
+
+        ICondition _loadCam5 = new Track.KeyboardCondition(Keys.D5);
+        ICondition _saveCam5 =
+            new AllCondition(
+                _ctrl,
+                new Track.KeyboardCondition(Keys.D5)
+            );
+
+        ICondition _loadCam6 = new Track.KeyboardCondition(Keys.D6);
+        ICondition _saveCam6 =
+            new AllCondition(
+                _ctrl,
+                new Track.KeyboardCondition(Keys.D6)
+            );
+
+        ICondition _loadCam7 = new Track.KeyboardCondition(Keys.D7);
+        ICondition _saveCam7 =
+            new AllCondition(
+                _ctrl,
+                new Track.KeyboardCondition(Keys.D7)
+            );
+
+        ICondition _loadCam8 = new Track.KeyboardCondition(Keys.D8);
+        ICondition _saveCam8 =
+            new AllCondition(
+                _ctrl,
+                new Track.KeyboardCondition(Keys.D8)
+            );
+
+        ICondition _loadCam9 = new Track.KeyboardCondition(Keys.D9);
+        ICondition _saveCam9 =
+            new AllCondition(
+                _ctrl,
+                new Track.KeyboardCondition(Keys.D9)
+            );
+
+        ICondition _loadCam0 =
+            new AnyCondition(
+                new Track.KeyboardCondition(Keys.D0),
+                new MouseCondition(MouseButton.XButton1)
+            );
+
         bool _isErasing = false;
         bool _isDrawing = false;
         Vector2 _start;
@@ -649,9 +863,6 @@ namespace GameProject {
         Vector2 _mouseWorld;
         Vector2 _dragAnchor = Vector2.Zero;
         float _targetExp = 0f;
-        float _targetRotation = 0f;
-        float _speed = 0.08f;
-        float _snapDistance = 0.001f;
         float _expDistance = 0.002f;
         float _maxExp = -4f;
         float _minExp = 4f;
@@ -667,7 +878,13 @@ namespace GameProject {
 
         bool _showDebug = false;
 
-        long _showZoomUntil = 0;
+        static FloatTween _zoomSidebarStart = new FloatTween(0f, 0.2f, 1000, Easing.QuintOut);
+        static ITween<float> _zoomSidebarWait = _zoomSidebarStart.Wait(1000);
+        ITween<float> _zoomSidebarTween = _zoomSidebarWait.To(0f, 1000, Easing.QuintOut);
+
+        Vector2Tween _xy;
+        FloatTween _exp;
+        FloatTween _rotation;
 
         FPSCounter _fps = new FPSCounter();
 

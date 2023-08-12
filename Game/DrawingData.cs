@@ -10,6 +10,7 @@ namespace GameProject {
         public List<Group> UndoGroups { get; set; } = new List<Group>();
         public List<Group> RedoGroups { get; set; } = new List<Group>();
         public List<JsonLine> RedoLines { get; set; } = new List<JsonLine>();
+        public Dictionary<string, Cam> SavedCams { get; set; } = new Dictionary<string, Cam>();
 
         public class Cam {
             public float X { get; set; } = 0f;
