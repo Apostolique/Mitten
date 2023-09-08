@@ -27,6 +27,9 @@ Grab the builds <https://apos.itch.io/mitten>.
 * Control + Middle click to zoom. Drag up to zoom in and down to zoom out.
 * Dot and Comma to rotate.
 * Hold Space use the hyper zoom. Release to go back to the previous position.
+* Save the current camera position with Control + 1, Control + 2, all the way to Control + 9.
+* Load a saved camera position by pressing 1, 2, ... 9.
+* Slot 0 is reserved for toggling back and forth between the current and previous position. You can also toggle using your mouse's extra buttons if you have them.
 
 ### Misc
 
