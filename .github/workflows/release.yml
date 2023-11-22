@@ -21,9 +21,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Setup .NET Core
-      uses: actions/setup-dotnet@v1
+      uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '6.0.x'
+        dotnet-version: '8.0.x'
     - name: Get version from tag
       run: |
         TAGVERSION=$(git describe --tags --abbrev=0)
@@ -43,14 +43,6 @@ jobs:
       uses: actions/setup-node@v1
       with:
         node-version: '14.x'
-    - name: rcedit icon fix
-      run: |
-        mkdir dep
-        cd dep
-        npm init -y
-        npm i rcedit
-        cd ..
-        wine dep/node_modules/rcedit/bin/rcedit-x64.exe ./artifacts/windows/Mitten.exe --set-icon ./Platforms/DesktopGL/Icon.ico --set-product-version "${{ env.TAGVERSION }}"
     - name: Publish Windows build to itch.io
       uses: josephbmanley/butler-publish-itchio-action@master
       env:
