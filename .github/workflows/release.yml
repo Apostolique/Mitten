@@ -28,7 +28,15 @@ jobs:
       run: |
         TAGVERSION=$(git describe --tags --abbrev=0)
         echo "TAGVERSION=${TAGVERSION:1}" >> $GITHUB_ENV
+    - name: Restore cached wine
+      id: cache-wine-restore
+      uses: actions/cache/restore@v3
+      with:
+        path: |
+          /home/runner/.winemonogame
+        key: ${{ runner.os }}-wine
     - name: Setup Wine
+      if: steps.cache-wine-restore.outputs.cache-hit != 'true'
       run: |
         sudo apt update
         sudo apt install wine64 p7zip-full
@@ -70,3 +78,10 @@ jobs:
         ITCH_USER: ${{ env.ITCH_USER_NAME }}
         PACKAGE: artifacts/linux
         VERSION: ${{ env.TAGVERSION }}
+    - name: Save wine
+      id: cache-wine-save
+      uses: actions/cache/save@v3
+      with:
+        path: |
+          /home/runner/.winemonogame
+        key: ${{ steps.cache-wine-restore.outputs.cache-primary-key }}
