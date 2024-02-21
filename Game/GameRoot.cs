@@ -1,4 +1,4 @@
-﻿using Apos.Camera;
+using Apos.Camera;
 using Apos.Input;
 using Track = Apos.Input.Track;
 using Apos.Shapes;
@@ -14,6 +14,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.IO;
+#if SDLWINDOWS
+using Apos.WintabDN;
+#endif
 using System.Text.Json.Serialization.Metadata;
 
 // TODO:
@@ -23,12 +26,13 @@ using System.Text.Json.Serialization.Metadata;
 namespace GameProject {
     public class GameRoot : Game {
         public GameRoot() {
-            _graphics = new GraphicsDeviceManager(this);
-            _graphics.GraphicsProfile = GraphicsProfile.HiDef;
+            _graphics = new GraphicsDeviceManager(this) {
+                GraphicsProfile = GraphicsProfile.HiDef
+            };
             IsMouseVisible = true;
             Content.RootDirectory = "Content";
 
-            _settings = EnsureJson<Settings>("Settings.json", SettingsContext.Default.Settings);
+            _settings = EnsureJson("Settings.json", SettingsContext.Default.Settings);
         }
 
         protected override void Initialize() {
@@ -38,6 +42,38 @@ namespace GameProject {
             _graphics.SynchronizeWithVerticalRetrace = _settings.IsVSync;
 
             _settings.IsFullscreen = _settings.IsFullscreen || _settings.IsBorderless;
+
+            #if SDLWINDOWS
+            SDL2.SDL.SDL_SysWMinfo systemInfo = new();
+            SDL2.SDL.SDL_VERSION(out systemInfo.version);
+            SDL2.SDL.SDL_GetWindowWMInfo(Window.Handle, ref systemInfo);
+
+            Console.WriteLine($"Device {CWintabInfo.GetDeviceInfo()}");
+
+            try {
+                _logContext = CWintabInfo.GetDefaultSystemContext(ECTXOptionValues.CXO_MESSAGES);
+                _logContext.Open(systemInfo.info.win.window, true);
+                Console.WriteLine($"Context: {_logContext.HCtx}");
+                _tabletIsValid = _logContext.HCtx != 0;
+                if (_tabletIsValid) {
+                    _data = new CWintabData(_logContext);
+                }
+
+                // while (true) {
+                //     uint count = 0;
+                //     WintabPacket[] results = _data.GetDataPackets(1, true, ref count);
+                //     for (int i = 0; i < count; i++) {
+                //         int x = results[i].pkX;
+                //         int y = results[i].pkY;
+                //         uint pressure = results[i].pkNormalPressure;
+
+                //         Console.WriteLine($"X: {x} -- Y: {y} ::: {pressure}");
+                //     }
+                // }
+            } catch (Exception ex) {
+                Console.WriteLine($"Tablet Exception {ex}");
+            }
+            #endif
 
             RestoreWindow();
             if (_settings.IsFullscreen) {
@@ -57,12 +93,12 @@ namespace GameProject {
             _fontSystem = new FontSystem();
             _fontSystem.AddFont(TitleContainer.OpenStream($"{Content.RootDirectory}/source-code-pro-medium.ttf"));
 
-            _lines = new Dictionary<int, Line>();
-            _tree = new AABBTree<Line>();
+            _lines = [];
+            _tree = [];
             _undoGroups = new Stack<(int, int)>();
             _redoGroups = new Stack<(int, int)>();
             _redoLines = new Stack<Line>();
-            _savedCams = new Dictionary<string, DrawingData.Cam>();
+            _savedCams = [];
 
             _camera = new Camera(new DefaultViewport(GraphicsDevice, Window));
 
@@ -72,18 +108,28 @@ namespace GameProject {
         }
 
         protected override void UnloadContent() {
+            #if SDLWINDOWS
+            if (_logContext.HCtx != 0) {
+                _logContext.Close();
+            }
+            #endif
+
             SaveDrawing();
 
             if (!_settings.IsFullscreen) {
                 SaveWindow();
             }
 
-            SaveJson<Settings>("Settings.json", _settings, SettingsContext.Default.Settings);
+            SaveJson("Settings.json", _settings, SettingsContext.Default.Settings);
 
             base.UnloadContent();
         }
 
         protected override void Update(GameTime gameTime) {
+            #if SDLWINDOWS
+            bool tabletProcessed = false;
+            #endif
+
             InputHelper.UpdateSetup();
             TweenHelper.UpdateSetup(gameTime);
 
@@ -108,7 +154,7 @@ namespace GameProject {
                     _color = _cp.UpdateInput();
                 }
             } else {
-                UpdateCamera(gameTime);
+                UpdateCamera();
 
                 if (!_isDrawing && _thickness.Held()) {
                     if (_thickness.Pressed()) {
@@ -118,7 +164,18 @@ namespace GameProject {
                     var diffX = (InputHelper.NewMouse.X - _thicknessStart.X) / 2f;
                     _radius = MathHelper.Clamp(_radiusStart + diffX, 0.5f, 1000f);
                 } else {
-                    if (_draw.Pressed()) {
+                    #if SDLWINDOWS
+                    if (!_isDrawing && _tabletIsValid) {
+                        _oldIsTablet = _isTablet;
+                        _isTablet = DrawTablet();
+                        if (_oldIsTablet && !_isTablet) {
+                            CreateGroup();
+                        }
+                        tabletProcessed = true;
+                    }
+                    #endif
+
+                    if (_draw.Pressed() && !_isTablet) {
                         _start = _mouseWorld;
                         _isDrawing = true;
                     }
@@ -219,6 +276,12 @@ namespace GameProject {
                 LoadCam("0");
             }
 
+            #if SDLWINDOWS
+            if (!tabletProcessed && _tabletIsValid) {
+                UpdateTablet();
+            }
+            #endif
+
             InputHelper.UpdateCleanup();
             base.Update(gameTime);
         }
@@ -241,7 +304,7 @@ namespace GameProject {
                 inView++;
             }
             if (_isDrawing) {
-                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), fgColor);
+                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _tabletPressure, fgColor);
             }
             if (_thickness.Held()) {
                 _sb.FillCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale(), fgColor);
@@ -250,12 +313,14 @@ namespace GameProject {
                     _sb.BorderCircle(_camera.ScreenToWorld(_thicknessStart), (_radius - 2f) * _camera.ScreenToWorldScale(), TWColor.White, 2f);
                 }
             } else {
-                _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), fgColor);
+                _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale() * _tabletPressure, fgColor);
                 if (_isErasing) {
-                    _sb.BorderCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale(), TWColor.Black, 6f);
-                    _sb.BorderCircle(_mouseWorld, (_radius - 2f) * _camera.ScreenToWorldScale(), TWColor.White, 2f);
+                    _sb.BorderCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale() * _tabletPressure, TWColor.Black, 6f);
+                    _sb.BorderCircle(_mouseWorld, (_radius - 2f) * _camera.ScreenToWorldScale() * _tabletPressure, TWColor.White, 2f);
                 }
             }
+
+            // _sb.FillCircle(_tabletXY, 100f * _tabletPressure, TWColor.White);
             _sb.End();
 
             _sb.Begin();
@@ -282,7 +347,62 @@ namespace GameProject {
             base.Draw(gameTime);
         }
 
-        private void UpdateCamera(GameTime gameTime) {
+        #if SDLWINDOWS
+        private void UpdateTablet() {
+            float maxPressure = CWintabInfo.GetMaxPressure();
+            // _tabletPressure = 1f;
+
+            uint count = 0;
+            WintabPacket[] results = _data.GetDataPackets(100, true, ref count);
+            for (int i = 0; i < count; i++) {
+                int x = results[i].pkX;
+                int y = results[i].pkY;
+                float pressure = results[i].pkNormalPressure / maxPressure;
+
+                y = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height - y - Window.ClientBounds.Y;
+                x -= Window.ClientBounds.X;
+
+                Console.WriteLine($"   X: {x} -- Y: {y} ::: {pressure}");
+                _tabletXYa = _tabletXYb;
+                _tabletXYb = _camera.ScreenToWorld(x, y);
+                _tabletPressure = pressure;
+            }
+        }
+        private bool DrawTablet() {
+            bool usedTablet = false;
+            float maxPressure = CWintabInfo.GetMaxPressure();
+            _tabletPressure = 1f;
+
+            uint count = 0;
+            WintabPacket[] results = _data.GetDataPackets(100, true, ref count);
+            for (int i = 0; i < count; i++) {
+                int x = results[i].pkX;
+                int y = results[i].pkY;
+                float pressure = results[i].pkNormalPressure / maxPressure;
+
+                y = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height - y - Window.ClientBounds.Y;
+                x -= Window.ClientBounds.X;
+
+                Console.WriteLine($"   X: {x} -- Y: {y} ::: {pressure}");
+                _tabletXYa = _tabletXYb;
+                _tabletXYb = _camera.ScreenToWorld(x, y);
+                _tabletPressure = pressure;
+                if (pressure > 0) {
+                    usedTablet = true;
+
+                    if (_tabletXYa.HasValue && _tabletXYb.HasValue && _tabletXYa.Value != _tabletXYb.Value) {
+                        CreateLine(_tabletXYa.Value, _tabletXYb.Value, _radius * _camera.ScreenToWorldScale() * pressure);
+                    }
+                } else {
+                    _tabletPressure = 1f;
+                }
+            }
+
+            return usedTablet;
+        }
+        #endif
+
+        private void UpdateCamera() {
             if (_hyperZoom.Pressed()) {
                 _preservedExp = _targetExp;
                 SetExpTween(_preservedExp + _hyperZoomExp);
@@ -339,25 +459,10 @@ namespace GameProject {
 
             _camera.XY = _xy.Value;
         }
-        private float Interpolate(float from, float target, float speed, float snapNear) {
-            float result = MathHelper.Lerp(from, target, speed);
-
-            if (from < target) {
-                result = MathHelper.Clamp(result, from, target);
-            } else {
-                result = MathHelper.Clamp(result, target, from);
-            }
-
-            if (MathF.Abs(target - result) < snapNear) {
-                return target;
-            } else {
-                return result;
-            }
-        }
-        private float ScaleToExp(float scale) {
+        private static float ScaleToExp(float scale) {
             return -MathF.Log(scale);
         }
-        private float ExpToScale(float exp) {
+        private static float ExpToScale(float exp) {
             return MathF.Exp(-exp);
         }
         private void SaveCam(string key) {
@@ -431,17 +536,21 @@ namespace GameProject {
 
         private void CreateLine(Vector2 a, Vector2 b, float radius) {
             var c = _isErasing ? TWColor.Transparent : _color;
-            Line l = new Line(_nextId++, a, b, radius, c);
+            Line l = new(_nextId++, a, b, radius, c);
 
             l.Leaf = _tree.Add(l.AABB, l);
             _lines.Add(l.Id, l);
             _group.Last = l.Id;
+            _hasPendingHistory = true;
         }
         private void CreateGroup() {
-            _undoGroups.Push(_group);
-            _group = (_nextId, _nextId);
-            _redoGroups.Clear();
-            _redoLines.Clear();
+            if (_hasPendingHistory) {
+                _undoGroups.Push(_group);
+                _group = (_nextId, _nextId);
+                _redoGroups.Clear();
+                _redoLines.Clear();
+                _hasPendingHistory = false;
+            }
         }
         private void Undo() {
             if (_undoGroups.Count > 0) {
@@ -475,40 +584,41 @@ namespace GameProject {
             }
         }
         private void SaveDrawing() {
-            DrawingData dd = new DrawingData();
-            dd.NextId = _nextId;
-            dd.BackgroundColor = new DrawingData.Color { R = _bgColor.R, G = _bgColor.G, B = _bgColor.B };
-            dd.Lines = _tree.Select(e => new DrawingData.JsonLine {
-                Id = e.Id,
-                A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
-                B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
-                Radius = e.Radius,
-                Color = e.Color == TWColor.Transparent ? null : new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
-            }).ToList();
-            dd.UndoGroups = _undoGroups.Select(e => new DrawingData.Group {
-                First = e.First,
-                Last = e.Last
-            }).ToList();
-            dd.RedoGroups = _redoGroups.Select(e => new DrawingData.Group {
-                First = e.First,
-                Last = e.Last
-            }).ToList();
-            dd.RedoLines = _redoLines.Select(e => new DrawingData.JsonLine {
-                Id = e.Id,
-                A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
-                B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
-                Radius = e.Radius,
-                Color = new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
-            }).ToList();
+            DrawingData dd = new() {
+                NextId = _nextId,
+                BackgroundColor = new DrawingData.Color { R = _bgColor.R, G = _bgColor.G, B = _bgColor.B },
+                Lines = _tree.Select(e => new DrawingData.JsonLine {
+                    Id = e.Id,
+                    A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
+                    B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
+                    Radius = e.Radius,
+                    Color = e.Color == TWColor.Transparent ? null : new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
+                }).ToList(),
+                UndoGroups = _undoGroups.Select(e => new DrawingData.Group {
+                    First = e.First,
+                    Last = e.Last
+                }).ToList(),
+                RedoGroups = _redoGroups.Select(e => new DrawingData.Group {
+                    First = e.First,
+                    Last = e.Last
+                }).ToList(),
+                RedoLines = _redoLines.Select(e => new DrawingData.JsonLine {
+                    Id = e.Id,
+                    A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
+                    B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
+                    Radius = e.Radius,
+                    Color = new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
+                }).ToList(),
 
-            dd.Camera = new DrawingData.Cam { X = _camera.X, Y = _camera.Y, Z = _camera.Z, Rotation = _camera.Rotation };
+                Camera = new DrawingData.Cam { X = _camera.X, Y = _camera.Y, Z = _camera.Z, Rotation = _camera.Rotation },
 
-            dd.SavedCams = _savedCams;
+                SavedCams = _savedCams
+            };
 
-            SaveJson<DrawingData>("Drawing.json", dd, DrawingDataContext.Default.DrawingData);
+            SaveJson("Drawing.json", dd, DrawingDataContext.Default.DrawingData);
         }
         private void LoadDrawing() {
-            DrawingData dd = EnsureJson<DrawingData>("Drawing.json", DrawingDataContext.Default.DrawingData);
+            DrawingData dd = EnsureJson("Drawing.json", DrawingDataContext.Default.DrawingData);
             _nextId = dd.NextId;
             _group = (_nextId, _nextId);
             _bgColor = new Color(dd.BackgroundColor.R, dd.BackgroundColor.G, dd.BackgroundColor.B);
@@ -517,7 +627,7 @@ namespace GameProject {
                 if (e.Color != null) {
                     c = new Color(e.Color.R, e.Color.G, e.Color.B);
                 }
-                Line l = new Line(e.Id, new Vector2(e.A.X, e.A.Y), new Vector2(e.B.X, e.B.Y), e.Radius, c);
+                Line l = new(e.Id, new Vector2(e.A.X, e.A.Y), new Vector2(e.B.X, e.B.Y), e.Radius, c);
                 l.Leaf = _tree.Add(l.AABB, l);
                 _lines.Add(l.Id, l);
             }
@@ -556,7 +666,7 @@ namespace GameProject {
             string jsonPath = GetPath(name);
 
             if (File.Exists(jsonPath)) {
-                json = JsonSerializer.Deserialize<T>(File.ReadAllText(jsonPath), typeInfo)!;
+                json = JsonSerializer.Deserialize(File.ReadAllText(jsonPath), typeInfo)!;
             } else {
                 json = new T();
                 string jsonString = JsonSerializer.Serialize(json, typeInfo);
@@ -657,17 +767,18 @@ namespace GameProject {
             }
         }
 
-        GraphicsDeviceManager _graphics;
+        readonly GraphicsDeviceManager _graphics;
         Camera _camera = null!;
         SpriteBatch _s = null!;
         ShapeBatch _sb = null!;
         FontSystem _fontSystem = null!;
 
-        Settings _settings;
+        readonly Settings _settings;
 
         AABBTree<Line> _tree = null!;
         Dictionary<int, Line> _lines = null!;
         (int First, int Last) _group = (0, 0);
+        bool _hasPendingHistory = false;
         Stack<(int First, int Last)> _undoGroups = null!;
         Stack<(int First, int Last)> _redoGroups = null!;
         Stack<Line> _redoLines = null!;
@@ -849,6 +960,8 @@ namespace GameProject {
 
         bool _isErasing = false;
         bool _isDrawing = false;
+        bool _oldIsTablet = false;
+        bool _isTablet = false;
         Vector2 _start;
         Vector2 _end;
         float _radius = 10f;
@@ -860,9 +973,9 @@ namespace GameProject {
         Vector2 _mouseWorld;
         Vector2 _dragAnchor = Vector2.Zero;
         float _targetExp = 0f;
-        float _expDistance = 0.002f;
-        float _maxExp = -4f;
-        float _minExp = 4f;
+        readonly float _expDistance = 0.002f;
+        readonly float _maxExp = -4f;
+        readonly float _minExp = 4f;
 
         float _radiusStart;
         Vector2 _thicknessStart;
@@ -871,18 +984,28 @@ namespace GameProject {
         Vector2 _pinCamera;
 
         float _preservedExp = 0f;
-        float _hyperZoomExp = 4f;
+        readonly float _hyperZoomExp = 4f;
 
         bool _showDebug = false;
 
-        static FloatTween _zoomSidebarStart = new FloatTween(0f, 0.2f, 1000, Easing.QuintOut);
-        static ITween<float> _zoomSidebarWait = _zoomSidebarStart.Wait(1000);
-        ITween<float> _zoomSidebarTween = _zoomSidebarWait.To(0f, 1000, Easing.QuintOut);
+        static readonly FloatTween _zoomSidebarStart = new FloatTween(0f, 0.2f, 1000, Easing.QuintOut);
+        static readonly ITween<float> _zoomSidebarWait = _zoomSidebarStart.Wait(1000);
+        readonly ITween<float> _zoomSidebarTween = _zoomSidebarWait.To(0f, 1000, Easing.QuintOut);
 
-        Vector2Tween _xy = new Vector2Tween(Vector2.Zero, Vector2.Zero, 0, Easing.QuintOut);
-        FloatTween _exp = new FloatTween(0f, 0f, 0, Easing.QuintOut);
-        FloatTween _rotation = new FloatTween(0f, 0f, 0, Easing.QuintOut);
+        readonly Vector2Tween _xy = new(Vector2.Zero, Vector2.Zero, 0, Easing.QuintOut);
+        readonly FloatTween _exp = new(0f, 0f, 0, Easing.QuintOut);
+        readonly FloatTween _rotation = new(0f, 0f, 0, Easing.QuintOut);
 
-        FPSCounter _fps = new FPSCounter();
+        readonly FPSCounter _fps = new();
+
+        #if SDLWINDOWS
+        CWintabContext _logContext = null!;
+        CWintabData _data = null!;
+        bool _tabletIsValid = false;
+        Vector2? _tabletXYa = null;
+        Vector2? _tabletXYb = null;
+        #endif
+
+        float _tabletPressure = 1f;
     }
 }
