@@ -33,7 +33,7 @@ namespace WintabDN
         PK_NORMAL_PRESSURE = 0x0400,    /* normal or tip pressure */
         PK_TANGENT_PRESSURE = 0x0800,   /* tangential or barrel pressure */
         PK_ORIENTATION = 0x1000,    /* orientation info: tilts */
-        PK_PKTBITS_ALL = 0x1FFF    // The Full Monty - all the bits execept Rotation - not supported
+        PK_PKTBITS_ALL = 0x1FFF    // The Full Monty - all the bits except Rotation - not supported
     }
 
     /// <summary>
