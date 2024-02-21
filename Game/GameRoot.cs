@@ -15,7 +15,7 @@ using System.Linq;
 using System.Text.Json;
 using System.IO;
 #if SDLWINDOWS
-using WintabDN;
+using Apos.WintabDN;
 #endif
 using System.Text.Json.Serialization.Metadata;
 
@@ -48,24 +48,30 @@ namespace GameProject {
             SDL2.SDL.SDL_VERSION(out systemInfo.version);
             SDL2.SDL.SDL_GetWindowWMInfo(Window.Handle, ref systemInfo);
 
-            CWintabContext logContext = CWintabInfo.GetDefaultSystemContext(ECTXOptionValues.CXO_MESSAGES);
-            logContext.Open(systemInfo.info.win.window, true);
-            Console.WriteLine($"Context: {logContext.HCtx} -- {systemInfo.info.win.window} -- {systemInfo.version.major}");
-            _tabletIsValid = logContext.HCtx != 0;
-            _data = new CWintabData(logContext);
+            Console.WriteLine($"Device {CWintabInfo.GetDeviceInfo()}");
+
+            try {
+                _logContext = CWintabInfo.GetDefaultSystemContext(ECTXOptionValues.CXO_MESSAGES);
+                _logContext.Open(systemInfo.info.win.window, true);
+                Console.WriteLine($"Context: {_logContext.HCtx}");
+                _tabletIsValid = _logContext.HCtx != 0;
+                _data = new CWintabData(_logContext);
+
+                // while (true) {
+                //     uint count = 0;
+                //     WintabPacket[] results = _data.GetDataPackets(1, true, ref count);
+                //     for (int i = 0; i < count; i++) {
+                //         int x = results[i].pkX;
+                //         int y = results[i].pkY;
+                //         uint pressure = results[i].pkNormalPressure;
+
+                //         Console.WriteLine($"X: {x} -- Y: {y} ::: {pressure}");
+                //     }
+                // }
+            } catch (Exception ex) {
+                Console.WriteLine($"Tablet Exception {ex}");
+            }
             #endif
-
-            // while (true) {
-            //     uint count = 0;
-            //     WintabPacket[] results = _data.GetDataPackets(1, true, ref count);
-            //     for (int i = 0; i < count; i++) {
-            //         int x = results[i].pkX;
-            //         int y = results[i].pkY;
-            //         uint pressure = results[i].pkNormalPressure;
-
-            //         Console.WriteLine($"X: {x} -- Y: {y} ::: {pressure}");
-            //     }
-            // }
 
             RestoreWindow();
             if (_settings.IsFullscreen) {
@@ -100,6 +106,12 @@ namespace GameProject {
         }
 
         protected override void UnloadContent() {
+            #if SDLWINDOWS
+            if (_logContext.HCtx != 0) {
+                _logContext.Close();
+            }
+            #endif
+
             SaveDrawing();
 
             if (!_settings.IsFullscreen) {
@@ -112,7 +124,9 @@ namespace GameProject {
         }
 
         protected override void Update(GameTime gameTime) {
+            #if SDLWINDOWS
             bool tabletProcessed = false;
+            #endif
 
             InputHelper.UpdateSetup();
             TweenHelper.UpdateSetup(gameTime);
@@ -338,7 +352,6 @@ namespace GameProject {
 
             uint count = 0;
             WintabPacket[] results = _data.GetDataPackets(100, true, ref count);
-            Console.WriteLine($"Checking tablet");
             for (int i = 0; i < count; i++) {
                 int x = results[i].pkX;
                 int y = results[i].pkY;
@@ -351,7 +364,6 @@ namespace GameProject {
                 _tabletXYa = _tabletXYb;
                 _tabletXYb = _camera.ScreenToWorld(x, y);
                 _tabletPressure = pressure;
-                // _tabletXY = new Vector2(x, y);
             }
         }
         private bool DrawTablet() {
@@ -361,7 +373,6 @@ namespace GameProject {
 
             uint count = 0;
             WintabPacket[] results = _data.GetDataPackets(100, true, ref count);
-            Console.WriteLine($"Checking tablet");
             for (int i = 0; i < count; i++) {
                 int x = results[i].pkX;
                 int y = results[i].pkY;
@@ -383,7 +394,6 @@ namespace GameProject {
                 } else {
                     _tabletPressure = 1f;
                 }
-                // _tabletXY = new Vector2(x, y);
             }
 
             return usedTablet;
@@ -987,12 +997,13 @@ namespace GameProject {
         readonly FPSCounter _fps = new();
 
         #if SDLWINDOWS
+        CWintabContext _logContext = null!;
         CWintabData _data = null!;
         bool _tabletIsValid = false;
-        #endif
-
         Vector2? _tabletXYa = null;
         Vector2? _tabletXYb = null;
+        #endif
+
         float _tabletPressure = 1f;
     }
 }

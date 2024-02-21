@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <OutputType>Exe</OutputType>
     <TargetFramework>net8</TargetFramework>
     <AssemblyName>Mitten</AssemblyName>
     <ApplicationIcon>Icon.ico</ApplicationIcon>
@@ -23,7 +23,14 @@
     <DefineConstants>$(DefineConstants);SDLWINDOWS</DefineConstants>
   </PropertyGroup>
 
+  <Target Name="DisplayMessages" BeforeTargets="AfterBuild">
+    <Message Text="Runtime = $(RuntimeIdentifier)" Importance="high" />
+    <Message Text="Constants = $(DefineConstants)" Importance="high" />
+    <Message Text="Publish = $(_IsPublishing)" Importance="high" />
+  </Target>
+
   <ItemGroup>
+    <PackageReference Include="Apos.WintabDN" Version="0.0.1" />
     <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.1.303" />
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.1.303" />
     <PackageReference Include="Apos.Camera" Version="0.3.2" />
