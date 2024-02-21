@@ -1,4 +1,5 @@
-﻿///////////////////////////////////////////////////////////////////////////////
+﻿#if SDLWINDOWS
+///////////////////////////////////////////////////////////////////////////////
 //
 //	PURPOSE
 //		Wintab context management for WintabDN
@@ -497,3 +498,4 @@ namespace WintabDN
         public FIX32 SysSensY { get { return m_logContext.lcSysSensY; } set { m_logContext.lcSysSensY = value; } }
     }
 }
+#endif

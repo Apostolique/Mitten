@@ -1,4 +1,5 @@
-﻿///////////////////////////////////////////////////////////////////////////////
+﻿#if SDLWINDOWS
+///////////////////////////////////////////////////////////////////////////////
 //
 //	PURPOSE
 //		Wintab32 function wrappers for WintabDN
@@ -440,3 +441,4 @@ namespace WintabDN
         public static extern bool WTExtSet(P_HCTX hctx_I, UInt32 extTag_I, IntPtr extData_I);
     }
 }
+#endif

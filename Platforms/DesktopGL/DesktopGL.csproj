@@ -15,6 +15,12 @@
     <RuntimeIdentifiers>win-x64;linux-x64;osx-x64</RuntimeIdentifiers>
     <NoBeautyFlag>True</NoBeautyFlag>
     <BeautyExcludes>SDL2*;libSDL2*;sdl2*;soft_oal*;openal*;MonoGame.Framework*</BeautyExcludes>
+
+    <IsWindows Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true' And '$(_IsPublishing)' != 'true'">true</IsWindows>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' Or '$(IsWindows)'=='true'">
+    <DefineConstants>$(DefineConstants);SDLWINDOWS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
