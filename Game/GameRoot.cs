@@ -14,7 +14,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.IO;
+#if SDLWINDOWS
 using WintabDN;
+#endif
 using System.Text.Json.Serialization.Metadata;
 
 // TODO:
@@ -41,13 +43,17 @@ namespace GameProject {
 
             _settings.IsFullscreen = _settings.IsFullscreen || _settings.IsBorderless;
 
+            #if SDLWINDOWS
             SDL2.SDL.SDL_SysWMinfo systemInfo = new();
             SDL2.SDL.SDL_VERSION(out systemInfo.version);
             SDL2.SDL.SDL_GetWindowWMInfo(Window.Handle, ref systemInfo);
 
             CWintabContext logContext = CWintabInfo.GetDefaultSystemContext(ECTXOptionValues.CXO_MESSAGES);
             logContext.Open(systemInfo.info.win.window, true);
+            Console.WriteLine($"Context: {logContext.HCtx} -- {systemInfo.info.win.window} -- {systemInfo.version.major}");
+            _tabletIsValid = logContext.HCtx != 0;
             _data = new CWintabData(logContext);
+            #endif
 
             // while (true) {
             //     uint count = 0;
@@ -106,7 +112,7 @@ namespace GameProject {
         }
 
         protected override void Update(GameTime gameTime) {
-            UpdateTablet();
+            bool tabletProcessed = false;
 
             InputHelper.UpdateSetup();
             TweenHelper.UpdateSetup(gameTime);
@@ -142,7 +148,18 @@ namespace GameProject {
                     var diffX = (InputHelper.NewMouse.X - _thicknessStart.X) / 2f;
                     _radius = MathHelper.Clamp(_radiusStart + diffX, 0.5f, 1000f);
                 } else {
-                    if (_draw.Pressed()) {
+                    #if SDLWINDOWS
+                    if (!_isDrawing && _tabletIsValid) {
+                        _oldIsTablet = _isTablet;
+                        _isTablet = DrawTablet();
+                        if (_oldIsTablet && !_isTablet) {
+                            CreateGroup();
+                        }
+                        tabletProcessed = true;
+                    }
+                    #endif
+
+                    if (_draw.Pressed() && !_isTablet) {
                         _start = _mouseWorld;
                         _isDrawing = true;
                     }
@@ -150,7 +167,7 @@ namespace GameProject {
                         _end = _mouseWorld;
 
                         if (_start != _end && !_line.Held()) {
-                            CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _tabletPressure);
+                            CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
                             _start = _mouseWorld;
                         }
                     }
@@ -162,7 +179,7 @@ namespace GameProject {
                             _end += new Vector2(_camera.ScreenToWorldScale());
                         }
 
-                        CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _tabletPressure);
+                        CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
                         CreateGroup();
                     }
                 }
@@ -243,6 +260,12 @@ namespace GameProject {
                 LoadCam("0");
             }
 
+            #if SDLWINDOWS
+            if (!tabletProcessed && _tabletIsValid) {
+                UpdateTablet();
+            }
+            #endif
+
             InputHelper.UpdateCleanup();
             base.Update(gameTime);
         }
@@ -308,12 +331,14 @@ namespace GameProject {
             base.Draw(gameTime);
         }
 
+        #if SDLWINDOWS
         private void UpdateTablet() {
             float maxPressure = CWintabInfo.GetMaxPressure();
             // _tabletPressure = 1f;
 
             uint count = 0;
-            WintabPacket[] results = _data.GetDataPackets(1, true, ref count);
+            WintabPacket[] results = _data.GetDataPackets(100, true, ref count);
+            Console.WriteLine($"Checking tablet");
             for (int i = 0; i < count; i++) {
                 int x = results[i].pkX;
                 int y = results[i].pkY;
@@ -322,12 +347,48 @@ namespace GameProject {
                 y = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height - y - Window.ClientBounds.Y;
                 x -= Window.ClientBounds.X;
 
-                Console.WriteLine($"X: {x} -- Y: {y} ::: {pressure}");
-                _tabletXY = _camera.ScreenToWorld(x, y);
+                Console.WriteLine($"   X: {x} -- Y: {y} ::: {pressure}");
+                _tabletXYa = _tabletXYb;
+                _tabletXYb = _camera.ScreenToWorld(x, y);
                 _tabletPressure = pressure;
                 // _tabletXY = new Vector2(x, y);
             }
         }
+        private bool DrawTablet() {
+            bool usedTablet = false;
+            float maxPressure = CWintabInfo.GetMaxPressure();
+            _tabletPressure = 1f;
+
+            uint count = 0;
+            WintabPacket[] results = _data.GetDataPackets(100, true, ref count);
+            Console.WriteLine($"Checking tablet");
+            for (int i = 0; i < count; i++) {
+                int x = results[i].pkX;
+                int y = results[i].pkY;
+                float pressure = results[i].pkNormalPressure / maxPressure;
+
+                y = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height - y - Window.ClientBounds.Y;
+                x -= Window.ClientBounds.X;
+
+                Console.WriteLine($"   X: {x} -- Y: {y} ::: {pressure}");
+                _tabletXYa = _tabletXYb;
+                _tabletXYb = _camera.ScreenToWorld(x, y);
+                _tabletPressure = pressure;
+                if (pressure > 0) {
+                    usedTablet = true;
+
+                    if (_tabletXYa.HasValue && _tabletXYb.HasValue && _tabletXYa.Value != _tabletXYb.Value) {
+                        CreateLine(_tabletXYa.Value, _tabletXYb.Value, _radius * _camera.ScreenToWorldScale() * pressure);
+                    }
+                } else {
+                    _tabletPressure = 1f;
+                }
+                // _tabletXY = new Vector2(x, y);
+            }
+
+            return usedTablet;
+        }
+        #endif
 
         private void UpdateCamera() {
             if (_hyperZoom.Pressed()) {
@@ -468,12 +529,16 @@ namespace GameProject {
             l.Leaf = _tree.Add(l.AABB, l);
             _lines.Add(l.Id, l);
             _group.Last = l.Id;
+            _hasPendingHistory = true;
         }
         private void CreateGroup() {
-            _undoGroups.Push(_group);
-            _group = (_nextId, _nextId);
-            _redoGroups.Clear();
-            _redoLines.Clear();
+            if (_hasPendingHistory) {
+                _undoGroups.Push(_group);
+                _group = (_nextId, _nextId);
+                _redoGroups.Clear();
+                _redoLines.Clear();
+                _hasPendingHistory = false;
+            }
         }
         private void Undo() {
             if (_undoGroups.Count > 0) {
@@ -701,6 +766,7 @@ namespace GameProject {
         AABBTree<Line> _tree = null!;
         Dictionary<int, Line> _lines = null!;
         (int First, int Last) _group = (0, 0);
+        bool _hasPendingHistory = false;
         Stack<(int First, int Last)> _undoGroups = null!;
         Stack<(int First, int Last)> _redoGroups = null!;
         Stack<Line> _redoLines = null!;
@@ -882,6 +948,8 @@ namespace GameProject {
 
         bool _isErasing = false;
         bool _isDrawing = false;
+        bool _oldIsTablet = false;
+        bool _isTablet = false;
         Vector2 _start;
         Vector2 _end;
         float _radius = 10f;
@@ -918,9 +986,13 @@ namespace GameProject {
 
         readonly FPSCounter _fps = new();
 
+        #if SDLWINDOWS
         CWintabData _data = null!;
+        bool _tabletIsValid = false;
+        #endif
 
-        Vector2 _tabletXY = Vector2.Zero;
-        float _tabletPressure = 0f;
+        Vector2? _tabletXYa = null;
+        Vector2? _tabletXYb = null;
+        float _tabletPressure = 1f;
     }
 }
