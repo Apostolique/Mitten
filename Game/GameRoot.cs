@@ -1,4 +1,4 @@
-﻿using Apos.Camera;
+using Apos.Camera;
 using Apos.Input;
 using Track = Apos.Input.Track;
 using Apos.Shapes;
@@ -55,7 +55,9 @@ namespace GameProject {
                 _logContext.Open(systemInfo.info.win.window, true);
                 Console.WriteLine($"Context: {_logContext.HCtx}");
                 _tabletIsValid = _logContext.HCtx != 0;
-                _data = new CWintabData(_logContext);
+                if (_tabletIsValid) {
+                    _data = new CWintabData(_logContext);
+                }
 
                 // while (true) {
                 //     uint count = 0;
