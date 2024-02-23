@@ -1,4 +1,4 @@
-using Apos.Camera;
+﻿using Apos.Camera;
 using Apos.Input;
 using Track = Apos.Input.Track;
 using Apos.Shapes;
@@ -48,9 +48,8 @@ namespace GameProject {
             SDL2.SDL.SDL_VERSION(out systemInfo.version);
             SDL2.SDL.SDL_GetWindowWMInfo(Window.Handle, ref systemInfo);
 
-            Console.WriteLine($"Device {CWintabInfo.GetDeviceInfo()}");
-
             try {
+                Console.WriteLine($"Device {CWintabInfo.GetDeviceInfo()}");
                 _logContext = CWintabInfo.GetDefaultSystemContext(ECTXOptionValues.CXO_MESSAGES);
                 _logContext.Open(systemInfo.info.win.window, true);
                 Console.WriteLine($"Context: {_logContext.HCtx}");
