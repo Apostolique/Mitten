@@ -822,7 +822,8 @@ namespace GameProject {
         ICondition _dragCamera =
             new AnyCondition(
                 new MouseCondition(MouseButton.RightButton),
-                new MouseCondition(MouseButton.MiddleButton)
+                new MouseCondition(MouseButton.MiddleButton),
+                new KeyboardCondition(Keys.X)
             );
 
         ICondition _toggleDebug = new KeyboardCondition(Keys.F1);
