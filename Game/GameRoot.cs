@@ -108,7 +108,7 @@ namespace GameProject {
 
         protected override void UnloadContent() {
             #if SDLWINDOWS
-            if (_logContext.HCtx != 0) {
+            if (_logContext is not null && _logContext.HCtx != 0) {
                 _logContext.Close();
             }
             #endif
