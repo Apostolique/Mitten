@@ -14,6 +14,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.IO;
+using System.Collections;
+
 #if SDLWINDOWS
 using Apos.WintabDN;
 #endif
@@ -155,7 +157,7 @@ namespace GameProject {
             } else {
                 UpdateCamera();
 
-                if (!_isDrawing && _thickness.Held()) {
+                if (!_isMouseDrawing && _thickness.Held()) {
                     if (_thickness.Pressed()) {
                         _radiusStart = _radius;
                         _thicknessStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
@@ -163,44 +165,21 @@ namespace GameProject {
                     var diffX = (InputHelper.NewMouse.X - _thicknessStart.X) / 2f;
                     _radius = MathHelper.Clamp(_radiusStart + diffX, 0.5f, 1000f);
                 } else {
+                    Console.WriteLine($"{_isTabletDrawing} -- {_isMouseDrawing}");
                     #if SDLWINDOWS
-                    if (!_isDrawing && _tabletIsValid) {
-                        _oldIsTablet = _isTablet;
-                        _isTablet = DrawTablet();
-                        if (_oldIsTablet && !_isTablet) {
-                            CreateGroup();
-                        }
+                    if (!_isMouseDrawing) {
+                        DrawWithTablet();
                         tabletProcessed = true;
                     }
                     #endif
 
-                    if (_draw.Pressed() && !_isTablet) {
-                        _start = _mouseWorld;
-                        _isDrawing = true;
-                    }
-                    if (_isDrawing && _draw.Held()) {
-                        _end = _mouseWorld;
-
-                        if (_start != _end && !_line.Held()) {
-                            CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
-                            _start = _mouseWorld;
-                        }
-                    }
-                    if (_isDrawing && _draw.Released()) {
-                        _isDrawing = false;
-                        _end = _mouseWorld;
-
-                        if (_start == _end) {
-                            _end += new Vector2(_camera.ScreenToWorldScale());
-                        }
-
-                        CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
-                        CreateGroup();
+                    if (!_isTabletDrawing) {
+                        DrawWithMouse();
                     }
                 }
             }
 
-            if (!_isDrawing) {
+            if (!_isMouseDrawing) {
                 if (_toggleEraser.Pressed()) {
                     _isErasing = !_isErasing;
                 }
@@ -302,8 +281,11 @@ namespace GameProject {
                 _sb.FillLine(l.A, l.B, l.Radius, c);
                 inView++;
             }
-            if (_isDrawing) {
+            if (_isTabletDrawing) {
                 _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _tabletPressure, fgColor);
+            }
+            if (_isMouseDrawing) {
+                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), fgColor);
             }
             if (_thickness.Held()) {
                 _sb.FillCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale(), fgColor);
@@ -348,58 +330,95 @@ namespace GameProject {
 
         #if SDLWINDOWS
         private void UpdateTablet() {
-            float maxPressure = CWintabInfo.GetMaxPressure();
-            // _tabletPressure = 1f;
-
-            uint count = 0;
-            WintabPacket[] results = _data.GetDataPackets(100, true, ref count);
-            for (int i = 0; i < count; i++) {
-                int x = results[i].pkX;
-                int y = results[i].pkY;
-                float pressure = results[i].pkNormalPressure / maxPressure;
-
-                y = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height - y - Window.ClientBounds.Y;
-                x -= Window.ClientBounds.X;
-
-                Console.WriteLine($"   X: {x} -- Y: {y} ::: {pressure}");
-                _tabletXYa = _tabletXYb;
-                _tabletXYb = _camera.ScreenToWorld(x, y);
-                _tabletPressure = pressure;
-            }
+            _data.FlushDataPackets(100);
         }
-        private bool DrawTablet() {
-            bool usedTablet = false;
-            float maxPressure = CWintabInfo.GetMaxPressure();
-            _tabletPressure = 1f;
 
-            uint count = 0;
-            WintabPacket[] results = _data.GetDataPackets(100, true, ref count);
-            for (int i = 0; i < count; i++) {
-                int x = results[i].pkX;
-                int y = results[i].pkY;
-                float pressure = results[i].pkNormalPressure / maxPressure;
+        private void DrawWithTablet() {
+            bool ranOnce = false;
 
-                y = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height - y - Window.ClientBounds.Y;
-                x -= Window.ClientBounds.X;
+            using IEnumerator<(int, int, float)> t = new QueryTablet(_data);
+            bool isValid;
+            do {
+                isValid = t.MoveNext();
 
-                Console.WriteLine($"   X: {x} -- Y: {y} ::: {pressure}");
-                _tabletXYa = _tabletXYb;
-                _tabletXYb = _camera.ScreenToWorld(x, y);
-                _tabletPressure = pressure;
-                if (pressure > 0) {
-                    usedTablet = true;
-
-                    if (_tabletXYa.HasValue && _tabletXYb.HasValue && _tabletXYa.Value != _tabletXYb.Value) {
-                        CreateLine(_tabletXYa.Value, _tabletXYb.Value, _radius * _camera.ScreenToWorldScale() * pressure);
-                    }
-                } else {
-                    _tabletPressure = 1f;
+                if (ranOnce && !isValid) {
+                    break;
                 }
-            }
 
-            return usedTablet;
+                _tabletPressure = 0;
+                Vector2 currentCursor;
+
+                if (isValid) {
+                    int x = t.Current.Item1;
+                    int y = t.Current.Item2;
+                    _tabletPressure = t.Current.Item3;
+
+                    y = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height - y - Window.ClientBounds.Y - 1;
+                    x -= Window.ClientBounds.X;
+
+                    currentCursor = _camera.ScreenToWorld(x, y);
+                    _lastTablet = currentCursor;
+                    _lastPressure = _tabletPressure;
+                } else {
+                    currentCursor = _lastTablet;
+                    _tabletPressure = _lastPressure;
+                }
+
+                if (!_isTabletDrawing && _tabletPressure > 0) {
+                    _start = currentCursor;
+                    _isTabletDrawing = true;
+                }
+                if (_isTabletDrawing) {
+                    _end = currentCursor;
+
+                    if (_start != _end && !_line.Held()) {
+                        CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _tabletPressure);
+                        _start = currentCursor;
+                    }
+                }
+                if (_isTabletDrawing && _tabletPressure == 0) {
+                    _isTabletDrawing = false;
+                    _end = currentCursor;
+
+                    if (_start == _end) {
+                        _end += new Vector2(_camera.ScreenToWorldScale());
+                    }
+
+                    CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _lastPressure);
+                    CreateGroup();
+                }
+
+                ranOnce = true;
+            } while (true);
         }
         #endif
+
+        private void DrawWithMouse() {
+            _tabletPressure = 1f;
+            if (_draw.Pressed()) {
+                _start = _mouseWorld;
+                _isMouseDrawing = true;
+            }
+            if (_isMouseDrawing && _draw.Held()) {
+                _end = _mouseWorld;
+
+                if (_start != _end && !_line.Held()) {
+                    CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
+                    _start = _mouseWorld;
+                }
+            }
+            if (_isMouseDrawing && _draw.Released()) {
+                _isMouseDrawing = false;
+                _end = _mouseWorld;
+
+                if (_start == _end) {
+                    _end += new Vector2(_camera.ScreenToWorldScale());
+                }
+
+                CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
+                CreateGroup();
+            }
+        }
 
         private void UpdateCamera() {
             if (_hyperZoom.Pressed()) {
@@ -766,6 +785,70 @@ namespace GameProject {
             }
         }
 
+        #if SDLWINDOWS
+        private struct QueryTablet : IEnumerator<(int, int, float)>, IEnumerable<(int, int, float)> {
+            public QueryTablet(CWintabData data) {
+                _count = 0;
+                _at = data.GetDataPackets(100, true, ref _count);
+                _maxPressure = CWintabInfo.GetMaxPressure();
+                if (_count > 0) {
+                    _isDone = false;
+                } else {
+                    _isDone = true;
+                }
+                _isStarted = false;
+                _current = default;
+            }
+
+            public readonly (int, int, float) Current => _current!.Value;
+
+            readonly object IEnumerator.Current {
+                get {
+                    if (!_isStarted || _isDone) {
+                        throw new InvalidOperationException("Enumeration has either not started or has already finished.");
+                    }
+                    return _current!;
+                }
+            }
+
+            public readonly void Dispose() { }
+
+            public bool MoveNext() {
+                _isStarted = true;
+
+                if (_index < _count) {
+                    WintabPacket wp = _at[_index];
+                    _current = (wp.pkX, wp.pkY, wp.pkNormalPressure / _maxPressure);
+                    _index++;
+                    return true;
+                } else {
+                    _isDone = true;
+                    _current = default;
+                }
+
+                return false;
+            }
+
+            public void Reset() {
+                _index = 0;
+                _isDone = false;
+                _isStarted = false;
+                _current = default;
+            }
+
+            public readonly IEnumerator<(int, int, float)> GetEnumerator() => this;
+            readonly IEnumerator IEnumerable.GetEnumerator() => this;
+
+            private readonly WintabPacket[] _at;
+            private int _index = 0;
+            private readonly uint _count;
+            private readonly float _maxPressure;
+            private (int, int, float)? _current;
+            private bool _isDone;
+            private bool _isStarted;
+        }
+        #endif
+
         readonly GraphicsDeviceManager _graphics;
         Camera _camera = null!;
         SpriteBatch _s = null!;
@@ -959,9 +1042,8 @@ namespace GameProject {
             );
 
         bool _isErasing = false;
-        bool _isDrawing = false;
-        bool _oldIsTablet = false;
-        bool _isTablet = false;
+        bool _isMouseDrawing = false;
+        bool _isTabletDrawing = false;
         Vector2 _start;
         Vector2 _end;
         float _radius = 10f;
@@ -1002,10 +1084,10 @@ namespace GameProject {
         CWintabContext _logContext = null!;
         CWintabData _data = null!;
         bool _tabletIsValid = false;
-        Vector2? _tabletXYa = null;
-        Vector2? _tabletXYb = null;
+        Vector2 _lastTablet = Vector2.Zero;
+        float _lastPressure = 0f;
         #endif
 
-        float _tabletPressure = 1f;
+        float _tabletPressure = 0f;
     }
 }
