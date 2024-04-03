@@ -167,7 +167,7 @@ namespace GameProject {
                 } else {
                     Console.WriteLine($"{_isTabletDrawing} -- {_isMouseDrawing}");
                     #if SDLWINDOWS
-                    if (!_isMouseDrawing) {
+                    if (!_isMouseDrawing && _tabletIsValid) {
                         DrawWithTablet();
                         tabletProcessed = true;
                     }
