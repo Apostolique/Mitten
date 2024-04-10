@@ -165,10 +165,9 @@ namespace GameProject {
                     var diffX = (InputHelper.NewMouse.X - _thicknessStart.X) / 2f;
                     _radius = MathHelper.Clamp(_radiusStart + diffX, 0.5f, 1000f);
                 } else {
-                    Console.WriteLine($"{_isTabletDrawing} -- {_isMouseDrawing}");
                     #if SDLWINDOWS
                     if (!_isMouseDrawing && _tabletIsValid) {
-                        DrawWithTablet();
+                        DrawWithTablet(gameTime.TotalGameTime.TotalMilliseconds);
                         tabletProcessed = true;
                     }
                     #endif
@@ -282,7 +281,11 @@ namespace GameProject {
                 inView++;
             }
             if (_isTabletDrawing) {
-                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _tabletPressure, fgColor);
+                float pressure = _tabletPressure;
+                if (_line.Held()) {
+                    pressure = _maxPressure;
+                }
+                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale() * pressure, fgColor);
             }
             if (_isMouseDrawing) {
                 _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), fgColor);
@@ -333,7 +336,7 @@ namespace GameProject {
             _data.FlushDataPackets(100);
         }
 
-        private void DrawWithTablet() {
+        private void DrawWithTablet(double totalTime) {
             bool ranOnce = false;
 
             using IEnumerator<(int, int, float)> t = new QueryTablet(_data);
@@ -359,6 +362,13 @@ namespace GameProject {
                     currentCursor = _camera.ScreenToWorld(x, y);
                     _lastTablet = currentCursor;
                     _lastPressure = _tabletPressure;
+
+                    if (totalTime - _maxLastTime < 300) {
+                        _maxPressure = MathF.Max(_tabletPressure, _maxPressure);
+                    } else {
+                        _maxPressure = _tabletPressure;
+                        _maxLastTime = totalTime;
+                    }
                 } else {
                     currentCursor = _lastTablet;
                     _tabletPressure = _lastPressure;
@@ -382,6 +392,10 @@ namespace GameProject {
 
                     if (_start == _end) {
                         _end += new Vector2(_camera.ScreenToWorldScale());
+                    }
+
+                    if (_line.Held()) {
+                        _lastPressure = _maxPressure;
                     }
 
                     CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _lastPressure);
@@ -1089,5 +1103,8 @@ namespace GameProject {
         #endif
 
         float _tabletPressure = 0f;
+
+        double _maxLastTime = 0f;
+        float _maxPressure = 0f;
     }
 }
