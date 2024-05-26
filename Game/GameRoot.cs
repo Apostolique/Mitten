@@ -167,13 +167,13 @@ namespace GameProject {
                 } else {
                     #if SDLWINDOWS
                     if (!_isMouseDrawing && _tabletIsValid) {
-                        DrawWithTablet(gameTime.TotalGameTime.TotalMilliseconds);
+                        StrokeWithTablet(gameTime.TotalGameTime.TotalMilliseconds);
                         tabletProcessed = true;
                     }
                     #endif
 
                     if (!_isTabletDrawing) {
-                        DrawWithMouse();
+                        StrokeWithMouse();
                     }
                 }
             }
@@ -336,7 +336,7 @@ namespace GameProject {
             _data.FlushDataPackets(100);
         }
 
-        private void DrawWithTablet(double totalTime) {
+        private void StrokeWithTablet(double totalTime) {
             bool ranOnce = false;
 
             using IEnumerator<(int, int, float)> t = new QueryTablet(_data);
@@ -407,7 +407,7 @@ namespace GameProject {
         }
         #endif
 
-        private void DrawWithMouse() {
+        private void StrokeWithMouse() {
             _tabletPressure = 1f;
             if (_draw.Pressed()) {
                 _start = _mouseWorld;
