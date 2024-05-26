@@ -96,9 +96,9 @@ namespace GameProject {
 
             _lines = [];
             _tree = [];
-            _undoGroups = new Stack<(int, int)>();
-            _redoGroups = new Stack<(int, int)>();
-            _redoLines = new Stack<Line>();
+            _undoGroups = [];
+            _redoGroups = [];
+            _redoLines = [];
             _savedCams = [];
 
             _camera = new Camera(new DefaultViewport(GraphicsDevice, Window));
@@ -1084,7 +1084,7 @@ namespace GameProject {
 
         bool _showDebug = false;
 
-        static readonly FloatTween _zoomSidebarStart = new FloatTween(0f, 0.2f, 1000, Easing.QuintOut);
+        static readonly FloatTween _zoomSidebarStart = new(0f, 0.2f, 1000, Easing.QuintOut);
         static readonly ITween<float> _zoomSidebarWait = _zoomSidebarStart.Wait(1000);
         readonly ITween<float> _zoomSidebarTween = _zoomSidebarWait.To(0f, 1000, Easing.QuintOut);
 
