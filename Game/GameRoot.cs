@@ -104,6 +104,7 @@ namespace GameProject {
             _camera = new Camera(new DefaultViewport(GraphicsDevice, Window));
 
             _cp = new ColorPicker(GraphicsDevice, Content);
+            LoadPalette();
 
             LoadDrawing();
         }
@@ -116,6 +117,7 @@ namespace GameProject {
             #endif
 
             SaveDrawing();
+            // SavePalette(); // Not required unless we code a palette creation UI.
 
             if (!_settings.IsFullscreen) {
                 SaveWindow();
@@ -685,6 +687,34 @@ namespace GameProject {
             SetRotationTween(dd.Camera.Rotation, 0);
 
             _savedCams = dd.SavedCams;
+        }
+        private void SavePalette() {
+            Palette.Color[][] colors = new Palette.Color[_cp.Colors.Length][];
+            for (int i = 0; i < _cp.Colors.Length; i++) {
+                colors[i] = new Palette.Color[_cp.Colors[i].Length];
+                for (int j = 0; j < _cp.Colors[i].Length; j++) {
+                    colors[i][j] = _cp.Colors[i][j];
+                }
+            }
+            Palette p = new() {
+                Colors = colors
+            };
+            SaveJson("Palette.json", p, PaletteContext.Default.Palette);
+        }
+        private void LoadPalette() {
+            Palette p = EnsureJson("Palette.json", PaletteContext.Default.Palette);
+
+            Color[][] colors = new Color[p.Colors.Length][];
+
+            for (int i = 0; i < p.Colors.Length; i++) {
+                colors[i] = new Color[p.Colors[i].Length];
+                for (int j = 0; j < p.Colors[i].Length; j++) {
+                    Palette.Color c = p.Colors[i][j];
+                    colors[i][j] = new Color(c.R, c.G, c.B);
+                }
+            }
+
+            _cp.Colors = colors;
         }
 
         public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, name);
