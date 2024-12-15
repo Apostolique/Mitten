@@ -32,7 +32,7 @@ jobs:
       run: |
         sudo apt update
         sudo apt install wine64 p7zip-full curl
-        wget -qO- https://raw.githubusercontent.com/MonoGame/MonoGame/78636f8056fa981584e3a2a3e0f22e2efbc43ef8/Tools/MonoGame.Effect.Compiler/mgfxc_wine_setup.sh | sh
+        wget -qO- https://raw.githubusercontent.com/MonoGame/MonoGame/29f3218b8c24de7d2a9d97dc133342e8a08bd8b0/Tools/MonoGame.Effect.Compiler/mgfxc_wine_setup.sh | sh
     - name: Build Windows
       run: dotnet publish ${{ env.PROJECT_PATH }} -r win-x64 -c Release --output artifacts/windows --self-contained -p:Version=${{ env.TAGVERSION }}
     - name: Build Osx
