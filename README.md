@@ -35,6 +35,8 @@ Grab the builds <https://apos.itch.io/mitten>.
 
 * Control + Z to undo.
 * Control + Shift + Z to redo.
+* Control + Backspace to undo everything.
+* Control + Shift + Backspace to redo everything.
 * F11 for the borderless fullscreen mode.
 * Alt + Enter for the fullscreen mode.
 

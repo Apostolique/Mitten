@@ -191,6 +191,12 @@ namespace GameProject {
                 if (_undo.Pressed()) {
                     Undo();
                 }
+                if (_redoAll.Pressed()) {
+                    RedoAll();
+                }
+                if (_undoAll.Pressed()) {
+                    UndoAll();
+                }
                 if (_save.Pressed()) {
                     SaveDrawing();
                 }
@@ -617,6 +623,37 @@ namespace GameProject {
                 _group = (_nextId, _nextId);
             }
         }
+        private void UndoAll() {
+            while (_undoGroups.Count > 0) {
+                var group = _undoGroups.Pop();
+                for (int i = group.First; i <= group.Last; i++) {
+                    Line l = _lines[i];
+                    _lines.Remove(i);
+                    _tree.Remove(l.Leaf);
+
+                    _redoLines.Push(l);
+                }
+                _redoGroups.Push(group);
+                _nextId = group.First;
+                _group = (_nextId, _nextId);
+            }
+        }
+        private void RedoAll() {
+            while (_redoGroups.Count > 0) {
+                var group = _redoGroups.Pop();
+                while (true) {
+                    var l = _redoLines.Pop();
+                    l.Leaf = _tree.Add(l.AABB, l);
+                    _lines.Add(l.Id, l);
+                    _group.Last = l.Id;
+
+                    if (l.Id == group.First) break;
+                }
+                _undoGroups.Push(group);
+                _nextId = group.Last + 1;
+                _group = (_nextId, _nextId);
+            }
+        }
         private void SaveDrawing() {
             DrawingData dd = new() {
                 NextId = _nextId,
@@ -975,6 +1012,32 @@ namespace GameProject {
                     new Track.KeyboardCondition(Keys.RightShift)
                 ),
                 new Track.KeyboardCondition(Keys.Z)
+            );
+        ICondition _undoAll =
+            new AllCondition(
+                new AnyCondition(
+                    new Track.KeyboardCondition(Keys.LeftControl),
+                    new Track.KeyboardCondition(Keys.RightControl)
+                ),
+                new AnyCondition(
+                    new Track.KeyboardCondition(Keys.Back),
+                    new Track.KeyboardCondition(Keys.Delete)
+                )
+            );
+        ICondition _redoAll =
+            new AllCondition(
+                new AnyCondition(
+                    new Track.KeyboardCondition(Keys.LeftControl),
+                    new Track.KeyboardCondition(Keys.RightControl)
+                ),
+                new AnyCondition(
+                    new Track.KeyboardCondition(Keys.LeftShift),
+                    new Track.KeyboardCondition(Keys.RightShift)
+                ),
+                new AnyCondition(
+                    new Track.KeyboardCondition(Keys.Back),
+                    new Track.KeyboardCondition(Keys.Delete)
+                )
             );
         ICondition _save =
             new AllCondition(
