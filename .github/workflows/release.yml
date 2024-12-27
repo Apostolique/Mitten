@@ -32,7 +32,7 @@ jobs:
       run: |
         sudo add-apt-repository universe
         sudo apt update
-        sudo apt install wine64 p7zip-full curl
+        sudo apt install wine p7zip-full curl
         wget -qO- https://raw.githubusercontent.com/MonoGame/monogame.github.io/a8b5797d179f78d1368f15091a0a0e01368be28a/website/content/public/downloads/winesetup/net8_mgfxc_wine_setup.sh | sh
     - name: Build Windows
       run: dotnet publish ${{ env.PROJECT_PATH }} -r win-x64 -c Release --output artifacts/windows --self-contained -p:Version=${{ env.TAGVERSION }}
