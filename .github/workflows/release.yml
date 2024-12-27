@@ -13,7 +13,7 @@ env:
 jobs:
   build:
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
 
     env:
       MGFXC_WINE_PATH: /home/runner/.winemonogame
@@ -31,12 +31,8 @@ jobs:
     - name: Setup Wine
       run: |
         sudo apt update
-        sudo apt install p7zip-full curl
-        curl -s https://dl.winehq.org/wine-builds/winehq.key | sudo gpg --dearmor | sudo tee /usr/share/keyrings/winehq.gpg > /dev/null
-        echo deb [signed-by=/usr/share/keyrings/winehq.gpg] http://dl.winehq.org/wine-builds/ubuntu/ $(lsb_release -cs) main | sudo tee /etc/apt/sources.list.d/winehq.list
-        sudo apt update
-        sudo apt install --install-recommends winehq-stable
-        wget -qO- https://raw.githubusercontent.com/MonoGame/MonoGame/2e72fcfa4144ea5bc413963af8f97a2d5e902338/Tools/MonoGame.Effect.Compiler/mgfxc_wine_setup.sh | sh
+        sudo apt install wine64 p7zip-full curl
+        wget -qO- https://raw.githubusercontent.com/MonoGame/monogame.github.io/a8b5797d179f78d1368f15091a0a0e01368be28a/website/content/public/downloads/winesetup/net8_mgfxc_wine_setup.sh | sh
     - name: Build Windows
       run: dotnet publish ${{ env.PROJECT_PATH }} -r win-x64 -c Release --output artifacts/windows --self-contained -p:Version=${{ env.TAGVERSION }}
     - name: Build Osx
