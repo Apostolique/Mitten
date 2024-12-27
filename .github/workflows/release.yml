@@ -13,7 +13,7 @@ env:
 jobs:
   build:
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     env:
       MGFXC_WINE_PATH: /home/runner/.winemonogame
@@ -30,6 +30,7 @@ jobs:
         echo "TAGVERSION=${TAGVERSION:1}" >> $GITHUB_ENV
     - name: Setup Wine
       run: |
+        sudo add-apt-repository universe
         sudo apt update
         sudo apt install wine64 p7zip-full curl
         wget -qO- https://raw.githubusercontent.com/MonoGame/monogame.github.io/a8b5797d179f78d1368f15091a0a0e01368be28a/website/content/public/downloads/winesetup/net8_mgfxc_wine_setup.sh | sh
