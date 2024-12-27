@@ -35,7 +35,7 @@ jobs:
         curl -s https://dl.winehq.org/wine-builds/winehq.key | sudo gpg --dearmor | sudo tee /usr/share/keyrings/winehq.gpg > /dev/null
         echo deb [signed-by=/usr/share/keyrings/winehq.gpg] http://dl.winehq.org/wine-builds/ubuntu/ $(lsb_release -cs) main | sudo tee /etc/apt/sources.list.d/winehq.list
         sudo apt update
-        sudo apt install wine64
+        sudo apt install --install-recommends winehq-stable
         wget -qO- https://raw.githubusercontent.com/MonoGame/MonoGame/2e72fcfa4144ea5bc413963af8f97a2d5e902338/Tools/MonoGame.Effect.Compiler/mgfxc_wine_setup.sh | sh
     - name: Build Windows
       run: dotnet publish ${{ env.PROJECT_PATH }} -r win-x64 -c Release --output artifacts/windows --self-contained -p:Version=${{ env.TAGVERSION }}
