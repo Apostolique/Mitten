@@ -30,19 +30,16 @@ jobs:
         echo "TAGVERSION=${TAGVERSION:1}" >> $GITHUB_ENV
     - name: Setup Wine
       run: |
+        sudo add-apt-repository universe
         sudo apt update
-        sudo apt install wine64 p7zip-full curl
-        wget -qO- https://raw.githubusercontent.com/MonoGame/MonoGame/78636f8056fa981584e3a2a3e0f22e2efbc43ef8/Tools/MonoGame.Effect.Compiler/mgfxc_wine_setup.sh | sh
+        sudo apt install wget curl p7zip-full wine64
+        wget -qO- https://raw.githubusercontent.com/MonoGame/monogame.github.io/9cd8a3b4e27ac03fe993f507a1da7fe70eb1eb8d/website/content/public/downloads/winesetup/net8_mgfxc_wine_setup.sh | sh
     - name: Build Windows
       run: dotnet publish ${{ env.PROJECT_PATH }} -r win-x64 -c Release --output artifacts/windows --self-contained -p:Version=${{ env.TAGVERSION }}
     - name: Build Osx
       run: dotnet publish ${{ env.PROJECT_PATH }} -r osx-x64 -c Release --output artifacts/osx --self-contained -p:Version=${{ env.TAGVERSION }}
     - name: Build Linux
       run: dotnet publish ${{ env.PROJECT_PATH }} -r linux-x64 -c Release --output artifacts/linux --self-contained -p:Version=${{ env.TAGVERSION }}
-    - name: Use Node.js
-      uses: actions/setup-node@v1
-      with:
-        node-version: '14.x'
     - name: Publish Windows build to itch.io
       uses: josephbmanley/butler-publish-itchio-action@master
       env:
