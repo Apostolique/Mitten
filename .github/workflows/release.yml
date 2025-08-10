@@ -41,7 +41,7 @@ jobs:
     - name: Build Linux
       run: dotnet publish ${{ env.PROJECT_PATH }} -r linux-x64 -c Release --output artifacts/linux --self-contained -p:Version=${{ env.TAGVERSION }}
     - name: Publish Windows build to itch.io
-      uses: josephbmanley/butler-publish-itchio-action@master
+      uses: yeslayla/butler-publish-itchio-action@master
       env:
         BUTLER_CREDENTIALS: ${{ secrets.BUTLER_API_KEY }}
         CHANNEL: windows
@@ -50,7 +50,7 @@ jobs:
         PACKAGE: artifacts/windows
         VERSION: ${{ env.TAGVERSION }}
     - name: Publish OSX build to itch.io
-      uses: josephbmanley/butler-publish-itchio-action@master
+      uses: yeslayla/butler-publish-itchio-action@master
       env:
         BUTLER_CREDENTIALS: ${{ secrets.BUTLER_API_KEY }}
         CHANNEL: osx
@@ -59,7 +59,7 @@ jobs:
         PACKAGE: artifacts/osx
         VERSION: ${{ env.TAGVERSION }}
     - name: Publish Linux build to itch.io
-      uses: josephbmanley/butler-publish-itchio-action@master
+      uses: yeslayla/butler-publish-itchio-action@master
       env:
         BUTLER_CREDENTIALS: ${{ secrets.BUTLER_API_KEY }}
         CHANNEL: linux
