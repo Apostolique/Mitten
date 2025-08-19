@@ -39,6 +39,7 @@ Grab the builds <https://apos.itch.io/mitten>.
 * Control + Shift + Backspace to redo everything.
 * F11 for the borderless fullscreen mode.
 * Alt + Enter for the fullscreen mode.
+* M to show or hide the mouse cursor.
 
 ## Saved files
 

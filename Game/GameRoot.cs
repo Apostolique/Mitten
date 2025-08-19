@@ -31,10 +31,10 @@ namespace GameProject {
             _graphics = new GraphicsDeviceManager(this) {
                 GraphicsProfile = GraphicsProfile.HiDef
             };
-            IsMouseVisible = true;
             Content.RootDirectory = "Content";
 
             _settings = EnsureJson("Settings.json", SettingsContext.Default.Settings);
+            IsMouseVisible = _settings.ShowMouse;
         }
 
         protected override void Initialize() {
@@ -140,6 +140,10 @@ namespace GameProject {
                 Exit();
 
             if (_toggleDebug.Pressed()) _showDebug = !_showDebug;
+            if (_toggleMouse.Pressed()) {
+                _settings.ShowMouse = !_settings.ShowMouse;
+                IsMouseVisible = _settings.ShowMouse;
+            }
             if (_resetFPS.Pressed()) _fps.DroppedFrames = 0;
             _fps.Update(gameTime);
 
@@ -992,6 +996,7 @@ namespace GameProject {
 
         ICondition _toggleDebug = new KeyboardCondition(Keys.F1);
         ICondition _resetFPS = new KeyboardCondition(Keys.F2);
+        ICondition _toggleMouse = new KeyboardCondition(Keys.M);
 
         ICondition _undo =
             new AllCondition(

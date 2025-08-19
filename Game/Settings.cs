@@ -10,6 +10,7 @@ namespace GameProject {
         public bool IsVSync { get; set; } = false;
         public bool IsFullscreen { get; set; } = false;
         public bool IsBorderless { get; set; } = false;
+        public bool ShowMouse { get; set; } = true;
     }
 
     [JsonSourceGenerationOptionsAttribute(
