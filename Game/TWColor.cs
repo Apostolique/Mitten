@@ -4,7 +4,7 @@ namespace GameProject {
     /// <summary>
     /// Preview the colors: https://tailwindcss.com/docs/customizing-colors#color-palette-reference
     /// </summary>
-    public class TWColor {
+    public static class TWColor {
         /// <summary>Black color (R:0,G:0,B:0,A:255).</summary>
         public static readonly Color Black = new Color(0, 0, 0);
         /// <summary>White color (R:255,G:255,B:255,A:255).</summary>
@@ -517,5 +517,9 @@ namespace GameProject {
         public static readonly Color Rose900 = new Color(136, 19, 55);
         /// <summary>Rose950 color (R:76,G:5,B:25,A:255).</summary>
         public static readonly Color Rose950 = new Color(76, 5, 25);
+
+        public static Color SetAlpha(this Color value, float scale) {
+            return new Color(value.R, value.G, value.B, (int)(255 * scale));
+        }
     }
 }

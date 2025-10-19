@@ -37,7 +37,7 @@ namespace GameProject {
                 var height = InputHelper.WindowHeight / (float)Colors[i].Length;
                 for (int j = 0; j < Colors[i].Length; j++) {
                     var c = j < MathF.Ceiling(Colors[i].Length / 2f) ? TWColor.Black : TWColor.White;
-                    _s.DrawString(font, $"{j}", new Vector2(i * width + width * 0.08f, j * height), c * 0.4f);
+                    _s.DrawString(font, $"{j}", new Vector2(i * width + width * 0.08f, j * height), c.SetAlpha(0.4f));
                 }
             }
             _s.End();

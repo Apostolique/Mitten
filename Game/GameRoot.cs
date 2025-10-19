@@ -324,7 +324,7 @@ namespace GameProject {
             if (_zoomSidebarTween.Value > 0f) {
                 var length = _minExp - _maxExp;
                 var percent = (camExp - _maxExp) / length;
-                _sb.DrawLine(new Vector2(0, GraphicsDevice.Viewport.Height), new Vector2(0, GraphicsDevice.Viewport.Height * percent), 10f, TWColor.White * _zoomSidebarTween.Value, TWColor.Black, 2f);
+                _sb.DrawLine(new Vector2(0, GraphicsDevice.Viewport.Height), new Vector2(0, GraphicsDevice.Viewport.Height * percent), 10f, TWColor.White.SetAlpha(_zoomSidebarTween.Value), TWColor.Black.SetAlpha(_zoomSidebarTween.Value), 2f);
             }
             _sb.End();
 
