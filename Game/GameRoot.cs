@@ -94,6 +94,7 @@ namespace GameProject {
             _undoOps = [];
             _redoOps = [];
             _savedCams = [];
+            _savedRadii = [];
 
             _camera = new CameraD(GraphicsDevice);
 
@@ -196,6 +197,17 @@ namespace GameProject {
                 if (_toggleTemp.Pressed()) {
                     _tempMode = !_tempMode;
                 }
+                if (_linkRadii.Pressed()) {
+                    _radiiLinked = !_radiiLinked;
+                    if (_radiiLinked) {
+                        // Relinking resyncs: the active tool's size wins.
+                        if (_tool == Tool.Erase) {
+                            _drawRadius = _eraseRadius;
+                        } else {
+                            _eraseRadius = _drawRadius;
+                        }
+                    }
+                }
 
                 if (_redo.Pressed()) {
                     Redo();
@@ -211,6 +223,15 @@ namespace GameProject {
                 }
                 if (_save.Pressed()) {
                     SaveDrawing();
+                }
+            }
+
+            for (int i = 0; i < 9; i++) {
+                if (_saveRadius[i].Pressed()) {
+                    _savedRadii[(i + 1).ToString()] = _radius;
+                }
+                if (_loadRadius[i].Pressed() && _savedRadii.TryGetValue((i + 1).ToString(), out float r)) {
+                    _radius = r;
                 }
             }
 
@@ -378,6 +399,10 @@ namespace GameProject {
                     if (_tool == Tool.Erase) {
                         _sb.BorderCircle(thicknessView, _radius, TWColor.Black, 6f);
                         _sb.BorderCircle(thicknessView, _radius - 2f, TWColor.White, 2f);
+                        // A second white ring marks unlinked pen and eraser sizes.
+                        if (!_radiiLinked) {
+                            _sb.BorderCircle(thicknessView, _radius - 8f, TWColor.White, 2f);
+                        }
                     }
                     if (_tempMode) {
                         _sb.BorderCircle(thicknessView, _radius + 6f, TempAccent, 2f);
@@ -388,6 +413,9 @@ namespace GameProject {
                     if (_tool == Tool.Erase) {
                         _sb.BorderCircle(mouseView, _radius * _tabletPressure, TWColor.Black, 6f);
                         _sb.BorderCircle(mouseView, (_radius - 2f) * _tabletPressure, TWColor.White, 2f);
+                        if (!_radiiLinked) {
+                            _sb.BorderCircle(mouseView, (_radius - 8f) * _tabletPressure, TWColor.White, 2f);
+                        }
                     }
                     if (_tempMode) {
                         _sb.BorderCircle(mouseView, _radius * _tabletPressure + 6f, TempAccent, 2f);
@@ -1550,7 +1578,12 @@ namespace GameProject {
 
                 SavedCams = _savedCams.ToDictionary(
                     kv => kv.Key,
-                    kv => ToJsonCam(frameIds, kv.Value.Node, kv.Value.XY, kv.Value.Exp, kv.Value.Rotation))
+                    kv => ToJsonCam(frameIds, kv.Value.Node, kv.Value.XY, kv.Value.Exp, kv.Value.Rotation)),
+
+                RadiiLinked = _radiiLinked,
+                DrawRadius = _drawRadius,
+                EraseRadius = _eraseRadius,
+                SavedRadii = new Dictionary<string, float>(_savedRadii)
             };
 
             SaveJson("Drawing.json", dd, DrawingDataContext.Default.DrawingData);
@@ -1639,6 +1672,12 @@ namespace GameProject {
             _nextId = dd.NextId;
             _group = (_nextId, _nextId);
             _bgColor = new Color(dd.BackgroundColor.R, dd.BackgroundColor.G, dd.BackgroundColor.B);
+            _radiiLinked = dd.RadiiLinked;
+            _drawRadius = dd.DrawRadius;
+            _eraseRadius = dd.EraseRadius;
+            foreach (var kv in dd.SavedRadii) {
+                _savedRadii[kv.Key] = kv.Value;
+            }
 
             if (dd.Version >= 3) {
                 LoadDrawingV3(dd);
@@ -2261,12 +2300,32 @@ namespace GameProject {
         ICondition _hyperZoom = new KeyboardCondition(Keys.Space);
 
         ICondition _toggleEraser = new KeyboardCondition(Keys.E);
+        ICondition _linkRadii = new KeyboardCondition(Keys.R);
 
         static ICondition _ctrl =
             new AnyCondition(
                 new KeyboardCondition(Keys.LeftControl),
                 new KeyboardCondition(Keys.RightControl)
             );
+        static ICondition _shift =
+            new AnyCondition(
+                new KeyboardCondition(Keys.LeftShift),
+                new KeyboardCondition(Keys.RightShift)
+            );
+
+        // Saved brush sizes, on Shift + digits like the camera slots on plain digits.
+        // Checked before the camera slots so their Track conditions consume the digit.
+        Dictionary<string, float> _savedRadii = null!;
+        readonly ICondition[] _loadRadius = SlotConditions(_shift);
+        readonly ICondition[] _saveRadius = SlotConditions(_ctrl, _shift);
+
+        static ICondition[] SlotConditions(params ICondition[] mods) {
+            ICondition[] slots = new ICondition[9];
+            for (int i = 0; i < 9; i++) {
+                slots[i] = new AllCondition([.. mods, new Track.KeyboardCondition(Keys.D1 + i)]);
+            }
+            return slots;
+        }
 
         Dictionary<string, SavedCamD> _savedCams = null!;
 
@@ -2348,7 +2407,25 @@ namespace GameProject {
         bool _isTabletDrawing = false;
         Vector2D _start;
         Vector2D _end;
-        float _radius = 10f;
+        // The pen and the eraser share one size until R unlinks them; then each keeps
+        // its own and R relinks them, snapping the other tool to the active size.
+        // _radius is whichever size the current tool uses.
+        bool _radiiLinked = true;
+        float _drawRadius = 10f;
+        float _eraseRadius = 10f;
+        float _radius {
+            get => _tool == Tool.Erase ? _eraseRadius : _drawRadius;
+            set {
+                if (_radiiLinked) {
+                    _drawRadius = value;
+                    _eraseRadius = value;
+                } else if (_tool == Tool.Erase) {
+                    _eraseRadius = value;
+                } else {
+                    _drawRadius = value;
+                }
+            }
+        }
         Color _color = TWColor.Gray300;
         Color _bgColor = TWColor.Black;
 

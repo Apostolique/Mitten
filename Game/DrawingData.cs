@@ -20,6 +20,12 @@ namespace GameProject {
         public List<JsonOp> UndoOps { get; set; } = new List<JsonOp>();
         public List<JsonOp> RedoOps { get; set; } = new List<JsonOp>();
         public Dictionary<string, Cam> SavedCams { get; set; } = new Dictionary<string, Cam>();
+        // Pen and eraser brush sizes plus the saved size slots. Absent on older
+        // files, where the defaults apply.
+        public bool RadiiLinked { get; set; } = true;
+        public float DrawRadius { get; set; } = 10f;
+        public float EraseRadius { get; set; } = 10f;
+        public Dictionary<string, float> SavedRadii { get; set; } = new Dictionary<string, float>();
 
         public class Cam {
             // v2: (i, j) index pairs, flattened, from the top root down to the anchor

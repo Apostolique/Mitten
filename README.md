@@ -16,6 +16,8 @@ Grab the builds <https://apos.itch.io/mitten>.
 * Left click to draw.
 * Shift + Left click to draw lines.
 * Control + Shift + Left click to change the brush size. Drag left to shrink the size and right to increase it.
+* R to unlink the pen and eraser sizes so each tool remembers its own. Press R again to relink them; the current tool's size wins. While unlinked, the eraser cursor shows a second inner ring.
+* Save the current tool's size with Control + Shift + 1, all the way to Control + Shift + 9. Load a saved size by pressing Shift + 1, ... Shift + 9.
 * Alt + Hover to select a different color.
 * Control + Alt + Hover to select a different background color.
 * E to toggle the eraser.
