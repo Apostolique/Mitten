@@ -499,11 +499,18 @@ namespace GameProject {
                         _zoomStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
                         _dragAnchor = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
                         _pinCamera = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                        _rePinZoom = false;
+                    } else if (_rePinZoom) {
+                        _expStart = _targetExp;
+                        _zoomStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                        _rePinZoom = false;
                     }
                     var diffY = (InputHelper.NewMouse.Y - _zoomStart.Y) / 100.0;
                     SetExpTween(_expStart + diffY, 0);
 
                     ShowZoomSidebar();
+
+                    _rePinZoom = WrapMouse();
                 } else if (MouseCondition.Scrolled() && !_thickness.Held()) {
                     SetExpTween(_targetExp - MouseCondition.ScrollDelta * _expDistance);
 
@@ -532,16 +539,42 @@ namespace GameProject {
 
                 if (_dragCamera.Pressed()) {
                     _dragAnchor = _mouseWorld;
+                    _rePinDrag = false;
                 }
                 if (_dragCamera.Held()) {
+                    if (_rePinDrag) {
+                        _dragAnchor = _mouseWorld;
+                        _rePinDrag = false;
+                    }
                     SetXYTween(_xy.Value + _dragAnchor - _mouseWorld, 0);
                     _mouseWorld = _dragAnchor;
+                    _rePinDrag = WrapMouse();
                 }
             }
 
             RebaseCamera();
 
             UpdateFlight();
+        }
+        private bool WrapMouse() {
+            if (!InputHelper.IsActive) return false;
+
+            var vp = GraphicsDevice.Viewport;
+            if (vp.Width < 4 || vp.Height < 4) return false;
+
+            int x = InputHelper.NewMouse.X;
+            int y = InputHelper.NewMouse.Y;
+            int nx = x;
+            int ny = y;
+            if (x <= 0) nx = Math.Clamp(x + vp.Width - 2, 1, vp.Width - 2);
+            else if (x >= vp.Width - 1) nx = Math.Clamp(x - (vp.Width - 2), 1, vp.Width - 2);
+            if (y <= 0) ny = Math.Clamp(y + vp.Height - 2, 1, vp.Height - 2);
+            else if (y >= vp.Height - 1) ny = Math.Clamp(y - (vp.Height - 2), 1, vp.Height - 2);
+
+            if (nx == x && ny == y) return false;
+
+            Mouse.SetPosition(nx, ny);
+            return true;
         }
         private static double ScaleToExp(double scale) {
             return -Math.Log(scale);
@@ -1831,6 +1864,8 @@ namespace GameProject {
         double _expStart;
         Vector2 _zoomStart;
         Vector2 _pinCamera;
+        bool _rePinDrag;
+        bool _rePinZoom;
 
         double _preservedExp = 0.0;
         readonly double _hyperZoomExp = 4.0;
