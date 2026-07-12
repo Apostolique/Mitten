@@ -1,0 +1,104 @@
+using System;
+using Microsoft.Xna.Framework;
+
+namespace GameProject {
+    /// <summary>
+    /// Double precision Vector2. World coordinates use this so that the canvas stays
+    /// precise far away from the origin. Only camera-relative values get converted
+    /// back to float right before rendering.
+    /// </summary>
+    public struct Vector2D : IEquatable<Vector2D> {
+        public Vector2D(double x, double y) {
+            X = x;
+            Y = y;
+        }
+        public Vector2D(double value) {
+            X = value;
+            Y = value;
+        }
+
+        public double X;
+        public double Y;
+
+        public static Vector2D Zero => new(0.0, 0.0);
+        public static Vector2D One => new(1.0, 1.0);
+
+        public readonly double Length() => Math.Sqrt(X * X + Y * Y);
+        public readonly double LengthSquared() => X * X + Y * Y;
+
+        public static double Distance(Vector2D a, Vector2D b) => (a - b).Length();
+        public static double Dot(Vector2D a, Vector2D b) => a.X * b.X + a.Y * b.Y;
+        public static Vector2D Min(Vector2D a, Vector2D b) => new(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y));
+        public static Vector2D Max(Vector2D a, Vector2D b) => new(Math.Max(a.X, b.X), Math.Max(a.Y, b.Y));
+
+        public static Vector2D operator +(Vector2D a, Vector2D b) => new(a.X + b.X, a.Y + b.Y);
+        public static Vector2D operator -(Vector2D a, Vector2D b) => new(a.X - b.X, a.Y - b.Y);
+        public static Vector2D operator -(Vector2D a) => new(-a.X, -a.Y);
+        public static Vector2D operator *(Vector2D a, double s) => new(a.X * s, a.Y * s);
+        public static Vector2D operator *(double s, Vector2D a) => new(a.X * s, a.Y * s);
+        public static Vector2D operator /(Vector2D a, double s) => new(a.X / s, a.Y / s);
+        public static bool operator ==(Vector2D a, Vector2D b) => a.X == b.X && a.Y == b.Y;
+        public static bool operator !=(Vector2D a, Vector2D b) => !(a == b);
+
+        public static implicit operator Vector2D(Vector2 v) => new(v.X, v.Y);
+        public static explicit operator Vector2(Vector2D v) => new((float)v.X, (float)v.Y);
+
+        public readonly bool Equals(Vector2D other) => this == other;
+        public override readonly bool Equals(object? obj) => obj is Vector2D other && this == other;
+        public override readonly int GetHashCode() => HashCode.Combine(X, Y);
+        public override readonly string ToString() => $"{{X:{X} Y:{Y}}}";
+    }
+
+    /// <summary>
+    /// Double precision axis aligned rectangle used for world space bounds.
+    /// </summary>
+    public struct RectangleD : IEquatable<RectangleD> {
+        public RectangleD(double x, double y, double width, double height) {
+            X = x;
+            Y = y;
+            Width = width;
+            Height = height;
+        }
+
+        public double X;
+        public double Y;
+        public double Width;
+        public double Height;
+
+        public readonly double Left => X;
+        public readonly double Top => Y;
+        public readonly double Right => X + Width;
+        public readonly double Bottom => Y + Height;
+        public readonly Vector2D Center => new(X + Width / 2.0, Y + Height / 2.0);
+
+        public static RectangleD FromBounds(double left, double top, double right, double bottom) {
+            return new RectangleD(left, top, right - left, bottom - top);
+        }
+
+        public static RectangleD Union(RectangleD a, RectangleD b) {
+            double left = Math.Min(a.Left, b.Left);
+            double top = Math.Min(a.Top, b.Top);
+            double right = Math.Max(a.Right, b.Right);
+            double bottom = Math.Max(a.Bottom, b.Bottom);
+            return FromBounds(left, top, right, bottom);
+        }
+
+        public readonly bool Intersects(RectangleD other) {
+            return Left <= other.Right && other.Left <= Right && Top <= other.Bottom && other.Top <= Bottom;
+        }
+        public readonly bool Contains(Vector2D v) {
+            return Left <= v.X && v.X <= Right && Top <= v.Y && v.Y <= Bottom;
+        }
+        public readonly bool Contains(RectangleD other) {
+            return Left <= other.Left && other.Right <= Right && Top <= other.Top && other.Bottom <= Bottom;
+        }
+
+        public static bool operator ==(RectangleD a, RectangleD b) => a.X == b.X && a.Y == b.Y && a.Width == b.Width && a.Height == b.Height;
+        public static bool operator !=(RectangleD a, RectangleD b) => !(a == b);
+
+        public readonly bool Equals(RectangleD other) => this == other;
+        public override readonly bool Equals(object? obj) => obj is RectangleD other && this == other;
+        public override readonly int GetHashCode() => HashCode.Combine(X, Y, Width, Height);
+        public override readonly string ToString() => $"{{X:{X} Y:{Y} Width:{Width} Height:{Height}}}";
+    }
+}

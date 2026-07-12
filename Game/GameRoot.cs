@@ -1,14 +1,11 @@
-﻿using Apos.Camera;
-using Apos.Input;
+﻿using Apos.Input;
 using Track = Apos.Input.Track;
 using Apos.Shapes;
-using Apos.Spatial;
 using Apos.Tweens;
 using FontStashSharp;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
-using MonoGame.Extended;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -95,13 +92,13 @@ namespace GameProject {
             _fontSystem.AddFont(TitleContainer.OpenStream($"{Content.RootDirectory}/source-code-pro-medium.ttf"));
 
             _lines = [];
-            _tree = [];
+            _anchor = new Frame();
             _undoGroups = [];
             _redoGroups = [];
             _redoLines = [];
             _savedCams = [];
 
-            _camera = new Camera(new DefaultViewport(GraphicsDevice, Window));
+            _camera = new CameraD(GraphicsDevice);
 
             _cp = new ColorPicker(GraphicsDevice, Content);
             LoadPalette();
@@ -286,10 +283,22 @@ namespace GameProject {
                 fgColor = _bgColor;
             }
 
+            _drawables.Clear();
+            _screenRadius = 0.5f * MathF.Sqrt(
+                GraphicsDevice.Viewport.Width * (float)GraphicsDevice.Viewport.Width +
+                GraphicsDevice.Viewport.Height * (float)GraphicsDevice.Viewport.Height) + 2f;
+            int fullCoverId = _coverage.Collect(_drawables, _camera.XY, _camera.Scale, _screenRadius);
+            CollectVisible();
+            _drawables.Sort(static (x, y) => x.Id.CompareTo(y.Id));
             int inView = 0;
-            foreach (Line l in _tree.Query(_camera.ViewRect).OrderBy(e => e.Id)) {
-                var c = l.Color == TWColor.Transparent ? _bgColor : l.Color;
-                _sb.FillLine(l.A, l.B, l.Radius, c);
+            foreach (var d in _drawables) {
+                if (d.Id < fullCoverId) continue;
+                var c = d.Color == TWColor.Transparent ? _bgColor : d.Color;
+                if (d.A == d.B) {
+                    _sb.FillCircle(d.A, d.Radius, c);
+                } else {
+                    _sb.FillLine(d.A, d.B, d.Radius, c);
+                }
                 inView++;
             }
             if (_isTabletDrawing) {
@@ -297,22 +306,24 @@ namespace GameProject {
                 if (_line.Held()) {
                     pressure = _maxPressure;
                 }
-                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale() * pressure, fgColor);
+                _sb.FillLine(_camera.WorldToView(_start), _camera.WorldToView(_end), _radius * pressure, fgColor);
             }
             if (_isMouseDrawing) {
-                _sb.FillLine(_start, _end, _radius * _camera.ScreenToWorldScale(), fgColor);
+                _sb.FillLine(_camera.WorldToView(_start), _camera.WorldToView(_end), _radius, fgColor);
             }
             if (_thickness.Held()) {
-                _sb.FillCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale(), fgColor);
+                var thicknessView = _camera.WorldToView(_camera.ScreenToWorld(_thicknessStart));
+                _sb.FillCircle(thicknessView, _radius, fgColor);
                 if (_isErasing) {
-                    _sb.BorderCircle(_camera.ScreenToWorld(_thicknessStart), _radius * _camera.ScreenToWorldScale(), TWColor.Black, 6f);
-                    _sb.BorderCircle(_camera.ScreenToWorld(_thicknessStart), (_radius - 2f) * _camera.ScreenToWorldScale(), TWColor.White, 2f);
+                    _sb.BorderCircle(thicknessView, _radius, TWColor.Black, 6f);
+                    _sb.BorderCircle(thicknessView, _radius - 2f, TWColor.White, 2f);
                 }
             } else {
-                _sb.FillCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale() * _tabletPressure, fgColor);
+                var mouseView = _camera.WorldToView(_mouseWorld);
+                _sb.FillCircle(mouseView, _radius * _tabletPressure, fgColor);
                 if (_isErasing) {
-                    _sb.BorderCircle(_mouseWorld, _radius * _camera.ScreenToWorldScale() * _tabletPressure, TWColor.Black, 6f);
-                    _sb.BorderCircle(_mouseWorld, (_radius - 2f) * _camera.ScreenToWorldScale() * _tabletPressure, TWColor.White, 2f);
+                    _sb.BorderCircle(mouseView, _radius * _tabletPressure, TWColor.Black, 6f);
+                    _sb.BorderCircle(mouseView, (_radius - 2f) * _tabletPressure, TWColor.White, 2f);
                 }
             }
 
@@ -320,13 +331,22 @@ namespace GameProject {
             _sb.End();
 
             _sb.Begin();
-            var camExp = ScaleToExp(_camera.ZToScale(_camera.Z, 0f));
+            var camExp = ScaleToExp(_camera.Scale);
             if (_zoomSidebarTween.Value > 0f) {
                 var length = _minExp - _maxExp;
-                var percent = (camExp - _maxExp) / length;
+                var percent = (float)((camExp - _maxExp) / length);
                 _sb.DrawLine(new Vector2(0, GraphicsDevice.Viewport.Height), new Vector2(0, GraphicsDevice.Viewport.Height * percent), 10f, TWColor.White.SetAlpha(_zoomSidebarTween.Value), TWColor.Black.SetAlpha(_zoomSidebarTween.Value), 2f);
             }
             _sb.End();
+
+            if (_zoomSidebarTween.Value > 0f) {
+                // Absolute zoom relative to the original top frame, as a power of ten.
+                double absLog10 = (_anchor.Level * Frame.LnK - camExp) / Math.Log(10.0);
+                var font = _fontSystem.GetFont(20);
+                _s.Begin();
+                _s.DrawString(font, $"x10^{absLog10:0.0}", new Vector2(16, GraphicsDevice.Viewport.Height - 28), TWColor.White.SetAlpha(_zoomSidebarTween.Value));
+                _s.End();
+            }
 
             if (_pickColor.Held()) {
                 _cp.Draw(_fontSystem, _pickBackground.Held(), _bgColor);
@@ -337,6 +357,7 @@ namespace GameProject {
                 _s.Begin();
                 _s.DrawString(font, $"fps: {_fps.FramesPerSecond} - Dropped Frames: {_fps.DroppedFrames} - Draw ms: {_fps.TimePerFrame} - Update ms: {_fps.TimePerUpdate}", new Vector2(10, 10), TWColor.White);
                 _s.DrawString(font, $"In view: {inView} -- Total: {_lines.Count} -- {_camera.ScreenToWorldScale()}", new Vector2(10, GraphicsDevice.Viewport.Height - 24), TWColor.White);
+                _s.DrawString(font, $"Level: {_anchor.Level} -- Cell: ({_anchor.Index.X}, {_anchor.Index.Y}) -- Coverage: {_coverage.Count}", new Vector2(10, GraphicsDevice.Viewport.Height - 48), TWColor.White);
                 _s.End();
             }
 
@@ -361,7 +382,7 @@ namespace GameProject {
                 }
 
                 _tabletPressure = 0;
-                Vector2 currentCursor;
+                Vector2D currentCursor;
 
                 if (isValid) {
                     int x = t.Current.Item1;
@@ -403,7 +424,7 @@ namespace GameProject {
                     _end = currentCursor;
 
                     if (_start == _end) {
-                        _end += new Vector2(_camera.ScreenToWorldScale());
+                        _end += new Vector2D(_camera.ScreenToWorldScale());
                     }
 
                     if (_line.Held()) {
@@ -438,7 +459,7 @@ namespace GameProject {
                 _end = _mouseWorld;
 
                 if (_start == _end) {
-                    _end += new Vector2(_camera.ScreenToWorldScale());
+                    _end += new Vector2D(_camera.ScreenToWorldScale());
                 }
 
                 CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
@@ -465,12 +486,12 @@ namespace GameProject {
                         _dragAnchor = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
                         _pinCamera = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
                     }
-                    var diffY = (InputHelper.NewMouse.Y - _zoomStart.Y) / 100f;
-                    SetExpTween(MathHelper.Clamp(_expStart + diffY, _maxExp, _minExp), 0);
+                    var diffY = (InputHelper.NewMouse.Y - _zoomStart.Y) / 100.0;
+                    SetExpTween(_expStart + diffY, 0);
 
                     ShowZoomSidebar();
                 } else if (MouseCondition.Scrolled() && !_thickness.Held()) {
-                    SetExpTween(MathHelper.Clamp(_targetExp - MouseCondition.ScrollDelta * _expDistance, _maxExp, _minExp));
+                    SetExpTween(_targetExp - MouseCondition.ScrollDelta * _expDistance);
 
                     ShowZoomSidebar();
                 }
@@ -483,8 +504,11 @@ namespace GameProject {
                 SetRotationTween(_rotation.B - MathHelper.PiOver4);
             }
 
-            _camera.Z = _camera.ScaleToZ(ExpToScale(_exp.Value), 0f);
+            _camera.Scale = ExpToScale(_exp.Value);
             _camera.Rotation = _rotation.Value;
+            // Sync XY before reading the mouse, otherwise the cursor projects through
+            // last frame's camera position and trails during XY tweens (LoadCam).
+            _camera.XY = _xy.Value;
 
             if (_dragZoom.Held()) {
                 SetXYTween(_xy.Value + _dragAnchor - _camera.ScreenToWorld(_pinCamera), 0);
@@ -501,56 +525,549 @@ namespace GameProject {
                 }
             }
 
+            RebaseCamera();
+
+            UpdateFlight();
+        }
+        private static double ScaleToExp(double scale) {
+            return -Math.Log(scale);
+        }
+        private static double ExpToScale(double exp) {
+            return Math.Exp(-exp);
+        }
+        private static double ZToScale(double z) {
+            return 1.0 / z;
+        }
+
+        // Ancestors above this height hand their strokes to the coverage stack. A tree
+        // query recomputes camera-relative positions every frame, so its error must
+        // stay subpixel or the content jitters; coverage entries are seeded once and
+        // transformed exactly, so they stay put. One level up the per-frame error is
+        // ~2^(16-37) * scale px (always subpixel in band); two levels up it is not.
+        private const int MaxAncestorQuery = 1;
+        // Sibling branches have no coverage entries, so their frames' trees are still
+        // queried up to this height. At height 2 the error is bounded by the strokes'
+        // own coordinate precision (~2^-36 of a cell), the best any path can do.
+        private const int MaxQueryHeight = 2;
+        // How many ancestor levels the collection walk visits. Strokes reach at most
+        // one parent cell beyond their frame's cell (NormalizeAnchor), so content from
+        // sibling branches up to 3 levels above can still overhang into the view.
+        private const int MaxWalkHeight = 3;
+        // Above this radius in pixels a stroke renders as a screen-local edge or full
+        // cover: float vertices cannot place the edge of a larger capsule precisely.
+        private const double BigRadiusPx = 1e6;
+
+        private void CollectVisible() {
+            // The camera is carried as exact integer cell offsets plus fractions in
+            // [0, 1)². Descending is then exact and ascending only rounds at 2^-53,
+            // so camera-relative positions never inherit the magnitude of ancestor
+            // coordinates. (Walking a plain double through u ancestor levels and back
+            // used to cost up to 2^(16u-37) * scale px: tens of pixels of drift and
+            // pan jitter at high zoom, catastrophic at u = 3.)
+            long ix = (long)Math.Floor(_camera.XY.X);
+            long iy = (long)Math.Floor(_camera.XY.Y);
+            double fx = _camera.XY.X - ix;
+            double fy = _camera.XY.Y - iy;
+            double ppu = _camera.Scale;
+
+            Frame f = _anchor;
+            Frame? skip = null;
+            for (int height = 0; ; height++) {
+                CollectFrame(f, ix, iy, fx, fy, ppu, height, skip, height <= MaxAncestorQuery);
+                if (height >= MaxWalkHeight || f.Parent == null) break;
+
+                (long qx, long rx) = FloorDivMod(ix, Frame.CellCount);
+                (long qy, long ry) = FloorDivMod(iy, Frame.CellCount);
+                fx = (rx + fx) / Frame.K;
+                fy = (ry + fy) / Frame.K;
+                ix = qx + f.Index.X;
+                iy = qy + f.Index.Y;
+                ppu *= Frame.K;
+                skip = f;
+                f = f.Parent;
+            }
+        }
+
+        private static (long Q, long R) FloorDivMod(long v, long k) {
+            long q = Math.DivRem(v, k, out long r);
+            if (r < 0) { q--; r += k; }
+            return (q, r);
+        }
+
+        private void CollectFrame(Frame f, long ix, long iy, double fx, double fy, double ppu, int height, Frame? skip, bool ownTree) {
+            // Collapsing the split camera is safe for queries: visited frames keep the
+            // camera within a few cells of their origin, and the rects have margins.
+            Vector2D cam = new(ix + fx, iy + fy);
+            RectangleD view = _camera.ViewRectIn(cam, ppu);
+            // Strokes anchored here are at most one cell (K units) across: below half
+            // a pixel none of them can be visible.
+            if (ownTree && height <= MaxQueryHeight && f.Tree.Count > 0 && ppu * Frame.K >= 0.5) {
+                foreach (Line l in f.Tree.Query(view)) {
+                    EmitLine(l, ix, iy, fx, fy, ppu);
+                }
+            }
+
+            if (f.Children.Count == 0) return;
+
+            // A child cell is 1 unit wide, so it projects to ppu pixels: below half a
+            // pixel nothing inside can be individually visible and the whole subtree
+            // renders as one impostor dot instead. This also terminates the recursion:
+            // ppu divides by K per level.
+            bool recurse = ppu >= 0.5;
+
+            // Strokes overhang their frame's cell by at most one cell width.
+            RectangleD near = new(view.X - 1.0, view.Y - 1.0, view.Width + 2.0, view.Height + 2.0);
+            foreach (Frame child in f.Children.Values) {
+                if (child == skip) continue;
+                var cell = new RectangleD(child.Index.X, child.Index.Y, 1.0, 1.0);
+                if (!cell.Intersects(near)) continue;
+                if (recurse) {
+                    double sx = fx * Frame.K;
+                    double sy = fy * Frame.K;
+                    long wx = (long)sx;
+                    long wy = (long)sy;
+                    CollectFrame(child,
+                        (ix - child.Index.X) * Frame.CellCount + wx,
+                        (iy - child.Index.Y) * Frame.CellCount + wy,
+                        sx - wx, sy - wy,
+                        ppu / Frame.K, height - 1, null, true);
+                } else if (child.SubtreeCount > 0 && child.SubtreeColor != null && child.SubtreeBounds is RectangleD b) {
+                    // Impostor: the subtree's bounds in this frame's units, as a dot.
+                    double bx = b.X / Frame.K + child.Index.X;
+                    double by = b.Y / Frame.K + child.Index.Y;
+                    double bw = b.Width / Frame.K;
+                    double bh = b.Height / Frame.K;
+                    double cx = ((bx + bw / 2.0 - ix) - fx) * ppu;
+                    double cy = ((by + bh / 2.0 - iy) - fy) * ppu;
+                    Vector2 viewPos = new((float)cx, (float)cy);
+                    float sizePx = (float)(Math.Max(bw, bh) * ppu);
+                    float radius = Math.Max(0.75f, sizePx * 0.5f);
+                    _drawables.Add(new Drawable(child.SubtreeMaxId, viewPos, viewPos, radius, child.SubtreeColor.Value));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Converts a stroke to a camera-relative drawable. All geometry is reduced in
+        /// doubles first — gigantic strokes become a screen-local edge or full cover,
+        /// long strokes get trimmed to the screen's vicinity — so the float vertices
+        /// handed to the GPU always stay small enough to be subpixel exact.
+        /// </summary>
+        private void EmitLine(Line l, long ix, long iy, double fx, double fy, double ppu) {
+            double ax = ((l.A.X - ix) - fx) * ppu;
+            double ay = ((l.A.Y - iy) - fy) * ppu;
+            double bx = ((l.B.X - ix) - fx) * ppu;
+            double by = ((l.B.Y - iy) - fy) * ppu;
+            double radius = l.Radius * ppu;
+            double fill = 2.0 * _screenRadius;
+
+            if (radius > BigRadiusPx) {
+                // Locally the stroke is a half-plane: emit its edge nearest the camera
+                // (the origin here), the same shape CoverageStack.Collect emits.
+                double abx = bx - ax, aby = by - ay;
+                double len2 = abx * abx + aby * aby;
+                double t = len2 > 0.0 ? Math.Clamp(-(ax * abx + ay * aby) / len2, 0.0, 1.0) : 0.0;
+                double cx = ax + abx * t, cy = ay + aby * t;
+                double dist = Math.Sqrt(cx * cx + cy * cy);
+                double edge = radius - dist;   // camera is inside by this many pixels
+                if (dist < 1e-9 || edge > fill) {
+                    _drawables.Add(new Drawable(l.Id, Vector2.Zero, Vector2.Zero, (float)fill, l.Color));
+                } else if (edge > -fill) {
+                    Vector2 n = new((float)(-cx / dist), (float)(-cy / dist));
+                    Vector2 tangent = new(-n.Y, n.X);
+                    Vector2 center = n * (float)(edge - fill);
+                    _drawables.Add(new Drawable(l.Id, center - tangent * (float)(fill * 2.0), center + tangent * (float)(fill * 2.0), (float)fill, l.Color));
+                }
+                return;
+            }
+
+            double dx = bx - ax, dy = by - ay;
+            double d2 = dx * dx + dy * dy;
+            double keep = radius + fill + 64.0;
+            if (d2 > 0.0) {
+                // Trim to the sub-segment within reach of the screen. Cutting a capsule
+                // at an interior point only sheds fill that was off screen anyway.
+                double m = -(ax * dx + ay * dy) / d2;
+                double c0 = (ax * ax + ay * ay - keep * keep) / d2;
+                double disc = m * m - c0;
+                if (disc <= 0.0) return;
+                double sq = Math.Sqrt(disc);
+                double t0 = Math.Max(0.0, m - sq);
+                double t1 = Math.Min(1.0, m + sq);
+                if (t0 >= t1) return;
+                (bx, by) = (ax + dx * t1, ay + dy * t1);
+                (ax, ay) = (ax + dx * t0, ay + dy * t0);
+            } else if (ax * ax + ay * ay > keep * keep) {
+                return;
+            }
+
+            _drawables.Add(new Drawable(l.Id, new Vector2((float)ax, (float)ay), new Vector2((float)bx, (float)by), (float)radius, l.Color));
+        }
+
+        /// <summary>
+        /// Re-anchors the camera when it leaves its frame's cell or zoom band, applying
+        /// the exact inverse transform to every piece of frame-relative state (tween
+        /// endpoints and gesture anchors) so nothing observable changes.
+        /// </summary>
+        private void RebaseCamera() {
+            for (int guard = 0; guard < 256; guard++) {
+                Vector2D xy = _xy.Value;
+                double scale = ExpToScale(_exp.Value);
+                if (xy.X < 0.0 || xy.X >= Frame.K || xy.Y < 0.0 || xy.Y >= Frame.K) {
+                    // Out of the cell laterally: go up; the next iterations descend
+                    // back into the right cell, which composes into an exact hop.
+                    AscendCamera();
+                } else if (scale > Frame.BandMax) {
+                    DescendCamera();
+                } else if (scale < Frame.BandMin) {
+                    AscendCamera();
+                } else {
+                    break;
+                }
+            }
+
             _camera.XY = _xy.Value;
+            _camera.Scale = ExpToScale(_exp.Value);
         }
-        private static float ScaleToExp(float scale) {
-            return -MathF.Log(scale);
+        private void AscendCamera() {
+            Frame parent = _anchor.EnsureParent();
+            Vector2D idx = _anchor.IndexOffset;
+            _xy.A = _xy.A / Frame.K + idx;
+            _xy.B = _xy.B / Frame.K + idx;
+            _dragAnchor = _dragAnchor / Frame.K + idx;
+            _mouseWorld = _mouseWorld / Frame.K + idx;
+            _start = _start / Frame.K + idx;
+            _end = _end / Frame.K + idx;
+            ShiftExp(-Frame.LnK);
+            _anchor = parent;
+            _coverage.OnAscend(idx, AncestorAt(_anchor, MaxAncestorQuery));
         }
-        private static float ExpToScale(float exp) {
-            return MathF.Exp(-exp);
+        private void DescendCamera() {
+            // The ancestor about to leave tree-query range hands its strokes near the
+            // camera over to the coverage stack (still in current anchor units, so the
+            // OnDescend below transforms the fresh entries too).
+            Frame? source = AncestorAt(_anchor, MaxAncestorQuery);
+            if (source != null) {
+                _coverage.SeedFrom(source, _anchor, _xy.Value, ExpToScale(_exp.Value));
+            }
+
+            Vector2D xy = _xy.Value;
+            var index = ((long)Math.Floor(xy.X), (long)Math.Floor(xy.Y));
+            Frame child = _anchor.GetOrCreateChild(index);
+            Vector2D idx = new(index.Item1, index.Item2);
+            _xy.A = (_xy.A - idx) * Frame.K;
+            _xy.B = (_xy.B - idx) * Frame.K;
+            _dragAnchor = (_dragAnchor - idx) * Frame.K;
+            _mouseWorld = (_mouseWorld - idx) * Frame.K;
+            _start = (_start - idx) * Frame.K;
+            _end = (_end - idx) * Frame.K;
+            ShiftExp(Frame.LnK);
+            _anchor = child;
+            _coverage.OnDescend(idx);
+        }
+        private static Frame? AncestorAt(Frame f, int distance) {
+            Frame? cur = f;
+            for (int i = 0; i < distance && cur != null; i++) {
+                cur = cur.Parent;
+            }
+            return cur;
+        }
+        private void RebuildCoverage() {
+            _coverage.Clear();
+            Vector2D xy = _xy.Value;
+            double scale = ExpToScale(_exp.Value);
+            for (Frame? src = AncestorAt(_anchor, MaxAncestorQuery + 1); src != null; src = src.Parent) {
+                _coverage.SeedFrom(src, _anchor, xy, scale);
+            }
+        }
+        private void ShiftExp(double delta) {
+            _exp.A += delta;
+            _exp.B += delta;
+            _targetExp += delta;
+            _preservedExp += delta;
+            _expStart += delta;
+        }
+
+        /// <summary>
+        /// Finds the right frame for a stroke given camera-frame coordinates: promotes
+        /// it up while it is too big for one cell, then re-homes it so its center lies
+        /// inside its frame's cell. Keeps per-frame overhang bounded to one cell width,
+        /// which is what CollectFrame's one-cell margin relies on.
+        /// </summary>
+        private (Frame Node, Vector2D A, Vector2D B, double Radius) NormalizeAnchor(Frame f, Vector2D a, Vector2D b, double radius) {
+            while (Math.Max(Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y)) + radius * 2.0 > Frame.K) {
+                Frame parent = f.EnsureParent();
+                Vector2D idx = f.IndexOffset;
+                a = a / Frame.K + idx;
+                b = b / Frame.K + idx;
+                radius /= Frame.K;
+                f = parent;
+            }
+
+            Vector2D center = (a + b) / 2.0;
+            int up = 0;
+            while (center.X < 0.0 || center.X >= Frame.K || center.Y < 0.0 || center.Y >= Frame.K) {
+                Frame parent = f.EnsureParent();
+                Vector2D idx = f.IndexOffset;
+                a = a / Frame.K + idx;
+                b = b / Frame.K + idx;
+                center = (a + b) / 2.0;
+                radius /= Frame.K;
+                f = parent;
+                up++;
+            }
+            while (up-- > 0) {
+                var index = ((long)Math.Floor(center.X), (long)Math.Floor(center.Y));
+                Frame child = f.GetOrCreateChild(index);
+                Vector2D idx = new(index.Item1, index.Item2);
+                a = (a - idx) * Frame.K;
+                b = (b - idx) * Frame.K;
+                center = (a + b) / 2.0;
+                radius *= Frame.K;
+                f = child;
+            }
+
+            return (f, a, b, radius);
         }
         private void SaveCam(string key) {
-            _savedCams[key] = new DrawingData.Cam {
-                X = _camera.X,
-                Y = _camera.Y,
-                Z = _camera.Z,
+            _savedCams[key] = new SavedCamD {
+                Node = _anchor,
+                XY = _camera.XY,
+                Exp = ScaleToExp(_camera.Scale),
                 Rotation = _camera.Rotation
             };
         }
         private void LoadCam(string key) {
-            if (_savedCams.TryGetValue(key, out DrawingData.Cam? cam)) {
-                _savedCams["0"] = new DrawingData.Cam {
-                    X = _xy.B.X,
-                    Y = _xy.B.Y,
-                    Z = _camera.ScaleToZ(ExpToScale(_exp.B), 0f),
+            if (_savedCams.TryGetValue(key, out SavedCamD? cam)) {
+                _savedCams["0"] = new SavedCamD {
+                    Node = _anchor,
+                    XY = _xy.B,
+                    Exp = _exp.B,
                     Rotation = _rotation.B
                 };
 
-                SetXYTween(cam.X, cam.Y);
-                SetZTween(cam.Z);
-                SetRotationTween(cam.Rotation);
+                if (TryTransformCam(cam, out Vector2D xy, out double exp)) {
+                    _flightCam = null;
+                    SetXYTween(xy);
+                    SetExpTween(exp);
+                    SetRotationTween(cam.Rotation);
+                } else if (!TryStartFlight(cam)) {
+                    TeleportCam(cam);
+                }
                 ShowZoomSidebar();
             }
         }
-        private void SetXYTween(float targetX, float targetY, long duration = 1200) {
-            SetXYTween(new Vector2(targetX, targetY), duration);
+        /// <summary>
+        /// Expresses a saved camera in the current anchor frame so it can be animated
+        /// to with a single direct tween. Fails when the target is too many levels or
+        /// cells away for that tween to be meaningful; the caller flies or teleports
+        /// instead.
+        /// </summary>
+        private bool TryTransformCam(SavedCamD cam, out Vector2D xy, out double exp) {
+            xy = cam.XY;
+            exp = cam.Exp;
+            if (Math.Abs(cam.Node.Level - _anchor.Level) > 2) return false;
+            if (!TransformCam(cam, out xy, out exp)) return false;
+
+            // Too far to tween meaningfully.
+            if (Math.Abs(xy.X) > 1e9 || Math.Abs(xy.Y) > 1e9) return false;
+            if (Math.Abs(exp - _exp.Value) > 3.0 * Frame.LnK) return false;
+
+            return true;
         }
-        private void SetXYTween(Vector2 target, long duration = 1200) {
+        /// <summary>
+        /// Expresses a saved camera in the current anchor frame: raises it to the
+        /// common ancestor, then descends the anchor's chain. The raise rounds at
+        /// 2^-53 and each descended level amplifies that by K, so the chain is capped
+        /// at 2 levels; past that the result would not land where the camera was
+        /// saved.
+        /// </summary>
+        private bool TransformCam(SavedCamD cam, out Vector2D xy, out double exp) {
+            xy = cam.XY;
+            exp = cam.Exp;
+
+            Frame b = cam.Node;
+            while (b.Level > _anchor.Level) {
+                if (b.Parent == null) return false;
+                xy = xy / Frame.K + b.IndexOffset;
+                exp -= Frame.LnK;
+                b = b.Parent;
+            }
+            Frame a = _anchor;
+            List<Frame> chain = [];
+            while (a.Level > b.Level) {
+                if (a.Parent == null) return false;
+                chain.Add(a);
+                a = a.Parent;
+            }
+            while (a != b) {
+                if (a.Parent == null || b.Parent == null) return false;
+                chain.Add(a);
+                a = a.Parent;
+                xy = xy / Frame.K + b.IndexOffset;
+                exp -= Frame.LnK;
+                b = b.Parent;
+            }
+            if (chain.Count > 2) return false;
+            for (int i = chain.Count - 1; i >= 0; i--) {
+                xy = (xy - chain[i].IndexOffset) * Frame.K;
+                exp += Frame.LnK;
+            }
+            return true;
+        }
+        /// <summary>
+        /// Starts a three phase flight to a saved camera that is too far for a direct
+        /// tween: zoom out over the current spot until the target is about half a
+        /// screen away (and the anchor is near the common ancestor, where the target's
+        /// coordinates are precise), pan over to it, then dive back in. Each phase is
+        /// a plain tween in current anchor coordinates, so RebaseCamera keeps the
+        /// endpoints exact across re-anchoring; UpdateFlight re-derives them from the
+        /// saved camera every frame, so precision improves as the anchor approaches
+        /// the target and the dive lands exactly.
+        /// </summary>
+        private bool TryStartFlight(SavedCamD cam) {
+            // Raise both cameras to their common ancestor to measure their separation.
+            Frame a = _anchor;
+            Frame b = cam.Node;
+            Vector2D pa = _xy.Value;
+            Vector2D pb = cam.XY;
+            long drop = 0;
+            while (b.Level > a.Level) {
+                if (b.Parent == null) return false;
+                pb = pb / Frame.K + b.IndexOffset;
+                b = b.Parent;
+            }
+            while (a.Level > b.Level) {
+                if (a.Parent == null) return false;
+                pa = pa / Frame.K + a.IndexOffset;
+                a = a.Parent;
+                drop++;
+            }
+            while (a != b) {
+                if (a.Parent == null || b.Parent == null) return false;
+                pa = pa / Frame.K + a.IndexOffset;
+                a = a.Parent;
+                drop++;
+                pb = pb / Frame.K + b.IndexOffset;
+                b = b.Parent;
+            }
+
+            var vp = GraphicsDevice.Viewport;
+            double halfScreen = 0.5 * Math.Min(vp.Width, vp.Height);
+            // Altitude where the pan spans about half the screen...
+            double expPan = Math.Log(Math.Max(Vector2D.Distance(pa, pb), 1e-9) / halfScreen) + drop * Frame.LnK;
+            // ...but no lower than where TransformCam's 2 level descent cap holds, so
+            // the pan and dive endpoints are trustworthy.
+            double expPrecise = (drop - 2) * Frame.LnK - Math.Log(Frame.BandMax);
+            double expOut = Math.Max(Math.Max(expPan, expPrecise), _exp.Value);
+
+            _flightCam = cam;
+            if (expOut > _exp.Value) {
+                _flightPhase = FlightPhase.Out;
+                SetXYTween(_xy.Value, 0);
+                SetExpTween(expOut, ZoomDuration(expOut - _exp.Value));
+            } else {
+                StartFlightPan();
+            }
+            return true;
+        }
+        private void StartFlightPan() {
+            SavedCamD cam = _flightCam!;
+            if (!TransformCam(cam, out Vector2D xy, out double _)) {
+                _flightCam = null;
+                TeleportCam(cam);
+                return;
+            }
+            // The dive must start exactly over the target: any lateral leftover gets
+            // amplified exponentially by the zoom and shoots the target off screen.
+            // Only skip the pan when the leftover is subpixel.
+            if ((xy - _xy.Value).Length() * ExpToScale(_exp.Value) < 1.0) {
+                StartFlightDive();
+                return;
+            }
+            _flightPhase = FlightPhase.Pan;
+            SetXYTween(xy, 800);
+        }
+        private void StartFlightDive() {
+            SavedCamD cam = _flightCam!;
+            if (!TransformCam(cam, out Vector2D xy, out double exp)) {
+                _flightCam = null;
+                TeleportCam(cam);
+                return;
+            }
+            _flightPhase = FlightPhase.In;
+            long duration = ZoomDuration(exp - _exp.Value);
+            SetXYTween(xy, 0);
+            SetExpTween(exp, duration);
+            SetRotationTween(cam.Rotation, duration);
+        }
+        private void UpdateFlight() {
+            if (_flightCam == null) return;
+            // Any manual camera gesture takes over and ends the flight where it is.
+            if (_hyperZoom.Held() || _hyperZoom.Released() || _dragZoom.Held() || _dragCamera.Held()
+                || (MouseCondition.Scrolled() && !_thickness.Held())) {
+                _flightCam = null;
+                return;
+            }
+            switch (_flightPhase) {
+                case FlightPhase.Out:
+                    if (TweenHelper.TotalMS >= _exp.StartTime + _exp.Duration) StartFlightPan();
+                    break;
+                case FlightPhase.Pan:
+                    if (TransformCam(_flightCam, out Vector2D panXY, out double _)) {
+                        _xy.B = panXY;
+                    }
+                    if (TweenHelper.TotalMS >= _xy.StartTime + _xy.Duration) StartFlightDive();
+                    break;
+                case FlightPhase.In:
+                    if (TransformCam(_flightCam, out Vector2D diveXY, out double diveExp)) {
+                        _xy.A = diveXY;
+                        _xy.B = diveXY;
+                        _exp.B = diveExp;
+                        _targetExp = diveExp;
+                    }
+                    if (TweenHelper.TotalMS >= _exp.StartTime + _exp.Duration) _flightCam = null;
+                    break;
+            }
+        }
+        private static long ZoomDuration(double expDelta) {
+            // Matches the direct jump's zoom rate (3 levels in 1200ms), capped so the
+            // deepest flights stay snappy.
+            return (long)Math.Clamp(Math.Abs(expDelta) / Frame.LnK * 400.0, 1200.0, 4000.0);
+        }
+        private void TeleportCam(SavedCamD cam) {
+            _flightCam = null;
+            // Gesture and stroke state is meaningless across an instant frame switch.
+            if (_isMouseDrawing || _isTabletDrawing) {
+                _isMouseDrawing = false;
+                _isTabletDrawing = false;
+                CreateGroup();
+            }
+            _anchor = cam.Node;
+            _dragAnchor = cam.XY;
+            _mouseWorld = cam.XY;
+            _start = cam.XY;
+            _end = cam.XY;
+            _preservedExp = cam.Exp;
+            _expStart = cam.Exp;
+            SetXYTween(cam.XY, 0);
+            SetExpTween(cam.Exp, 0);
+            SetRotationTween(cam.Rotation, 0);
+            _camera.XY = cam.XY;
+            _camera.Scale = ExpToScale(cam.Exp);
+            RebuildCoverage();
+        }
+        private void SetXYTween(double targetX, double targetY, long duration = 1200) {
+            SetXYTween(new Vector2D(targetX, targetY), duration);
+        }
+        private void SetXYTween(Vector2D target, long duration = 1200) {
             _xy.A = _xy.Value;
             _xy.B = target;
             _xy.StartTime = TweenHelper.TotalMS;
             _xy.Duration = duration;
         }
-        private void SetExpTween(float target, long duration = 1200) {
+        private void SetExpTween(double target, long duration = 1200) {
             _targetExp = target;
-            _exp.A = _exp.Value;
-            _exp.B = _targetExp;
-            _exp.StartTime = TweenHelper.TotalMS;
-            _exp.Duration = duration;
-            ShowZoomSidebar();
-        }
-        private void SetZTween(float target, long duration = 1200) {
-            _targetExp = ScaleToExp(_camera.ZToScale(target, 0f));
             _exp.A = _exp.Value;
             _exp.B = _targetExp;
             _exp.StartTime = TweenHelper.TotalMS;
@@ -578,11 +1095,13 @@ namespace GameProject {
             }
         }
 
-        private void CreateLine(Vector2 a, Vector2 b, float radius) {
+        private void CreateLine(Vector2D a, Vector2D b, double radius) {
             var c = _isErasing ? TWColor.Transparent : _color;
-            Line l = new(_nextId++, a, b, radius, c);
+            var (f, na, nb, nr) = NormalizeAnchor(_anchor, a, b, radius);
+            Line l = new(_nextId++, na, nb, nr, c) { Node = f };
 
-            l.Leaf = _tree.Add(l.AABB, l);
+            l.Leaf = f.Tree.Add(l.AABB, l);
+            f.BubbleAdd(l.AABB, l.Id, c == TWColor.Transparent ? null : c);
             _lines.Add(l.Id, l);
             _group.Last = l.Id;
             _hasPendingHistory = true;
@@ -602,13 +1121,15 @@ namespace GameProject {
                 for (int i = group.First; i <= group.Last; i++) {
                     Line l = _lines[i];
                     _lines.Remove(i);
-                    _tree.Remove(l.Leaf);
+                    l.Node.Tree.Remove(l.Leaf);
+                    l.Node.BubbleRemove();
 
                     _redoLines.Push(l);
                 }
                 _redoGroups.Push(group);
                 _nextId = group.First;
                 _group = (_nextId, _nextId);
+                RebuildCoverage();
             }
         }
         private void Redo() {
@@ -616,7 +1137,8 @@ namespace GameProject {
                 var group = _redoGroups.Pop();
                 while (true) {
                     var l = _redoLines.Pop();
-                    l.Leaf = _tree.Add(l.AABB, l);
+                    l.Leaf = l.Node.Tree.Add(l.AABB, l);
+                    l.Node.BubbleAdd(l.AABB, l.Id, l.Color == TWColor.Transparent ? null : l.Color);
                     _lines.Add(l.Id, l);
                     _group.Last = l.Id;
 
@@ -625,6 +1147,7 @@ namespace GameProject {
                 _undoGroups.Push(group);
                 _nextId = group.Last + 1;
                 _group = (_nextId, _nextId);
+                RebuildCoverage();
             }
         }
         private void UndoAll() {
@@ -633,7 +1156,8 @@ namespace GameProject {
                 for (int i = group.First; i <= group.Last; i++) {
                     Line l = _lines[i];
                     _lines.Remove(i);
-                    _tree.Remove(l.Leaf);
+                    l.Node.Tree.Remove(l.Leaf);
+                    l.Node.BubbleRemove();
 
                     _redoLines.Push(l);
                 }
@@ -641,13 +1165,15 @@ namespace GameProject {
                 _nextId = group.First;
                 _group = (_nextId, _nextId);
             }
+            RebuildCoverage();
         }
         private void RedoAll() {
             while (_redoGroups.Count > 0) {
                 var group = _redoGroups.Pop();
                 while (true) {
                     var l = _redoLines.Pop();
-                    l.Leaf = _tree.Add(l.AABB, l);
+                    l.Leaf = l.Node.Tree.Add(l.AABB, l);
+                    l.Node.BubbleAdd(l.AABB, l.Id, l.Color == TWColor.Transparent ? null : l.Color);
                     _lines.Add(l.Id, l);
                     _group.Last = l.Id;
 
@@ -657,17 +1183,35 @@ namespace GameProject {
                 _nextId = group.Last + 1;
                 _group = (_nextId, _nextId);
             }
+            RebuildCoverage();
         }
         private void SaveDrawing() {
+            // Serialize the frame tree as a flat list, parents before children (nested
+            // JSON would hit System.Text.Json's depth limit long before deep zooms do).
+            Frame top = _anchor.TopRoot();
+            List<Frame> frames = [];
+            Dictionary<Frame, int> frameIds = [];
+            Stack<Frame> stack = [];
+            stack.Push(top);
+            while (stack.Count > 0) {
+                Frame f = stack.Pop();
+                frameIds[f] = frames.Count;
+                frames.Add(f);
+                foreach (Frame child in f.Children.Values) {
+                    stack.Push(child);
+                }
+            }
+
             DrawingData dd = new() {
+                Version = 2,
                 NextId = _nextId,
                 BackgroundColor = new DrawingData.Color { R = _bgColor.R, G = _bgColor.G, B = _bgColor.B },
-                Lines = _tree.Select(e => new DrawingData.JsonLine {
-                    Id = e.Id,
-                    A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
-                    B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
-                    Radius = e.Radius,
-                    Color = e.Color == TWColor.Transparent ? null : new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
+                Nodes = frames.Select(f => new DrawingData.JsonNode {
+                    Id = frameIds[f],
+                    ParentId = f.Parent == null ? -1 : frameIds[f.Parent],
+                    I = f.Index.X,
+                    J = f.Index.Y,
+                    Lines = f.Tree.Select(ToJsonLine).ToList()
                 }).ToList(),
                 UndoGroups = _undoGroups.Select(e => new DrawingData.Group {
                     First = e.First,
@@ -677,35 +1221,64 @@ namespace GameProject {
                     First = e.First,
                     Last = e.Last
                 }).ToList(),
-                RedoLines = _redoLines.Select(e => new DrawingData.JsonLine {
-                    Id = e.Id,
-                    A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
-                    B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
-                    Radius = e.Radius,
-                    Color = new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
+                RedoLines = _redoLines.Select(e => {
+                    var line = ToJsonLine(e);
+                    line.NodeId = frameIds[e.Node];
+                    return line;
                 }).ToList(),
 
-                Camera = new DrawingData.Cam { X = _camera.X, Y = _camera.Y, Z = _camera.Z, Rotation = _camera.Rotation },
+                Camera = ToJsonCam(frameIds, _anchor, _camera.XY, ScaleToExp(_camera.Scale), _camera.Rotation),
 
-                SavedCams = _savedCams
+                SavedCams = _savedCams.ToDictionary(
+                    kv => kv.Key,
+                    kv => ToJsonCam(frameIds, kv.Value.Node, kv.Value.XY, kv.Value.Exp, kv.Value.Rotation))
             };
 
             SaveJson("Drawing.json", dd, DrawingDataContext.Default.DrawingData);
+        }
+        private static DrawingData.JsonLine ToJsonLine(Line e) {
+            return new DrawingData.JsonLine {
+                Id = e.Id,
+                A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
+                B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
+                Radius = e.Radius,
+                Color = e.Color == TWColor.Transparent ? null : new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
+            };
+        }
+        private static DrawingData.Cam ToJsonCam(Dictionary<Frame, int> frameIds, Frame node, Vector2D xy, double exp, float rotation) {
+            List<(long X, long Y)> pairs = [];
+            Frame f = node;
+            while (f.Parent != null) {
+                pairs.Add(f.Index);
+                f = f.Parent;
+            }
+            pairs.Reverse();
+            List<long> path = [];
+            foreach (var (x, y) in pairs) {
+                path.Add(x);
+                path.Add(y);
+            }
+            return new DrawingData.Cam {
+                Path = path,
+                X = xy.X,
+                Y = xy.Y,
+                Exp = exp,
+                Rotation = rotation
+            };
         }
         private void LoadDrawing() {
             DrawingData dd = EnsureJson("Drawing.json", DrawingDataContext.Default.DrawingData);
             _nextId = dd.NextId;
             _group = (_nextId, _nextId);
             _bgColor = new Color(dd.BackgroundColor.R, dd.BackgroundColor.G, dd.BackgroundColor.B);
-            foreach (var e in dd.Lines) {
-                Color c = TWColor.Transparent;
-                if (e.Color != null) {
-                    c = new Color(e.Color.R, e.Color.G, e.Color.B);
-                }
-                Line l = new(e.Id, new Vector2(e.A.X, e.A.Y), new Vector2(e.B.X, e.B.Y), e.Radius, c);
-                l.Leaf = _tree.Add(l.AABB, l);
-                _lines.Add(l.Id, l);
+
+            if (dd.Version >= 2) {
+                LoadDrawingV2(dd);
+            } else {
+                BackupV1Drawing(dd);
+                LoadDrawingV1(dd);
             }
+
             for (int i = dd.UndoGroups.Count - 1; i >= 0; i--) {
                 var group = dd.UndoGroups[i];
                 _undoGroups.Push((group.First, group.Last));
@@ -714,20 +1287,102 @@ namespace GameProject {
                 var group = dd.RedoGroups[i];
                 _redoGroups.Push((group.First, group.Last));
             }
-            for (int i = dd.RedoLines.Count - 1; i >= 0; i--) {
-                var l = dd.RedoLines[i];
-                Color c = TWColor.Transparent;
-                if (l.Color != null) {
-                    c = new Color(l.Color.R, l.Color.G, l.Color.B);
+
+            RebaseCamera();
+            RebuildCoverage();
+        }
+        private void LoadDrawingV2(DrawingData dd) {
+            List<Frame> frames = [];
+            foreach (var n in dd.Nodes) {
+                Frame f;
+                if (n.ParentId < 0 || n.ParentId >= frames.Count) {
+                    f = new Frame();
+                } else {
+                    f = frames[n.ParentId].GetOrCreateChild((n.I, n.J));
                 }
-                _redoLines.Push(new Line(l.Id, new Vector2(l.A.X, l.A.Y), new Vector2(l.B.X, l.B.Y), l.Radius, c));
+                frames.Add(f);
+                foreach (var e in n.Lines) {
+                    Line l = new(e.Id, new Vector2D(e.A.X, e.A.Y), new Vector2D(e.B.X, e.B.Y), e.Radius, JsonColor(e.Color)) { Node = f };
+                    l.Leaf = f.Tree.Add(l.AABB, l);
+                    f.BubbleAdd(l.AABB, l.Id, l.Color == TWColor.Transparent ? null : l.Color);
+                    _lines.Add(l.Id, l);
+                }
+            }
+            Frame root = frames.Count > 0 ? frames[0] : new Frame();
+
+            for (int i = dd.RedoLines.Count - 1; i >= 0; i--) {
+                var e = dd.RedoLines[i];
+                Frame f = e.NodeId >= 0 && e.NodeId < frames.Count ? frames[e.NodeId] : root;
+                _redoLines.Push(new Line(e.Id, new Vector2D(e.A.X, e.A.Y), new Vector2D(e.B.X, e.B.Y), e.Radius, JsonColor(e.Color)) { Node = f });
             }
 
-            SetXYTween(new Vector2(dd.Camera.X, dd.Camera.Y), 0);
-            SetExpTween(ScaleToExp(_camera.ZToScale(dd.Camera.Z, 0f)), 0);
+            (_anchor, Vector2D xy, double exp) = FromJsonCam(root, dd.Camera);
+            SetXYTween(xy, 0);
+            SetExpTween(exp, 0);
             SetRotationTween(dd.Camera.Rotation, 0);
 
-            _savedCams = dd.SavedCams;
+            foreach (var kv in dd.SavedCams) {
+                var (node, camXY, camExp) = FromJsonCam(root, kv.Value);
+                _savedCams[kv.Key] = new SavedCamD { Node = node, XY = camXY, Exp = camExp, Rotation = kv.Value.Rotation };
+            }
+        }
+        private static void BackupV1Drawing(DrawingData dd) {
+            // One-time safety net before migrating: the v2 save is not readable by
+            // older builds (they would see an empty canvas and auto-save over it), so
+            // keep the original around for rollbacks.
+            if (dd.Lines.Count == 0 && dd.RedoLines.Count == 0) return;
+
+            string source = GetPath("Drawing.json");
+            string backup = GetPath("Drawing.v1.bak.json");
+            try {
+                if (File.Exists(source) && !File.Exists(backup)) {
+                    File.Copy(source, backup);
+                }
+            } catch (Exception ex) {
+                Console.WriteLine($"Drawing backup failed: {ex}");
+            }
+        }
+        private void LoadDrawingV1(DrawingData dd) {
+            // v1: float coordinates in one flat world frame. Everything lands in a
+            // fresh root and gets re-homed to the proper cells by NormalizeAnchor.
+            Frame root = _anchor;
+            foreach (var e in dd.Lines) {
+                var (f, a, b, r) = NormalizeAnchor(root, new Vector2D(e.A.X, e.A.Y), new Vector2D(e.B.X, e.B.Y), e.Radius);
+                Line l = new(e.Id, a, b, r, JsonColor(e.Color)) { Node = f };
+                l.Leaf = f.Tree.Add(l.AABB, l);
+                f.BubbleAdd(l.AABB, l.Id, l.Color == TWColor.Transparent ? null : l.Color);
+                _lines.Add(l.Id, l);
+            }
+            for (int i = dd.RedoLines.Count - 1; i >= 0; i--) {
+                var e = dd.RedoLines[i];
+                var (f, a, b, r) = NormalizeAnchor(root, new Vector2D(e.A.X, e.A.Y), new Vector2D(e.B.X, e.B.Y), e.Radius);
+                _redoLines.Push(new Line(e.Id, a, b, r, JsonColor(e.Color)) { Node = f });
+            }
+
+            SetXYTween(new Vector2D(dd.Camera.X, dd.Camera.Y), 0);
+            SetExpTween(ScaleToExp(ZToScale(dd.Camera.Z)), 0);
+            SetRotationTween(dd.Camera.Rotation, 0);
+
+            foreach (var kv in dd.SavedCams) {
+                _savedCams[kv.Key] = new SavedCamD {
+                    Node = root,
+                    XY = new Vector2D(kv.Value.X, kv.Value.Y),
+                    Exp = ScaleToExp(ZToScale(kv.Value.Z)),
+                    Rotation = kv.Value.Rotation
+                };
+            }
+        }
+        private static Color JsonColor(DrawingData.Color? c) {
+            return c == null ? TWColor.Transparent : new Color(c.R, c.G, c.B);
+        }
+        private static (Frame Node, Vector2D XY, double Exp) FromJsonCam(Frame root, DrawingData.Cam cam) {
+            Frame f = root;
+            if (cam.Path != null) {
+                for (int i = 0; i + 1 < cam.Path.Count; i += 2) {
+                    f = f.GetOrCreateChild((cam.Path[i], cam.Path[i + 1]));
+                }
+            }
+            return (f, new Vector2D(cam.X, cam.Y), cam.Exp);
         }
         private void SavePalette() {
             Palette.Color[][] colors = new Palette.Color[_cp.Colors.Length][];
@@ -841,33 +1496,11 @@ namespace GameProject {
             _graphics.ApplyChanges();
         }
 
-        private class Line {
-            public Line(int id, Vector2 a, Vector2 b, float radius, Color c) {
-                Id = id;
-                A = a;
-                B = b;
-                Radius = radius;
-                Color = c;
-                AABB = ComputeAABB();
-            }
-
-            public int Id { get; set; }
-            public int Leaf { get; set; }
-            public Vector2 A { get; set; }
-            public Vector2 B { get; set; }
-            public float Radius { get; set; }
-            public Color Color { get; set; }
-
-            public RectangleF AABB { get; set; }
-
-            private RectangleF ComputeAABB() {
-                float left = MathF.Min(A.X, B.X) - Radius;
-                float top = MathF.Min(A.Y, B.Y) - Radius;
-                float right = MathF.Max(A.X, B.X) + Radius;
-                float bottom = MathF.Max(A.Y, B.Y) + Radius;
-
-                return new RectangleF(left, top, right - left, bottom - top);
-            }
+        private class SavedCamD {
+            public Frame Node = null!;
+            public Vector2D XY;
+            public double Exp;
+            public float Rotation;
         }
 
         #if SDLWINDOWS
@@ -935,15 +1568,18 @@ namespace GameProject {
         #endif
 
         readonly GraphicsDeviceManager _graphics;
-        Camera _camera = null!;
+        CameraD _camera = null!;
         SpriteBatch _s = null!;
         ShapeBatch _sb = null!;
         FontSystem _fontSystem = null!;
 
         readonly Settings _settings;
 
-        AABBTree<Line> _tree = null!;
+        Frame _anchor = null!;
         Dictionary<int, Line> _lines = null!;
+        readonly List<Drawable> _drawables = [];
+        float _screenRadius;
+        readonly CoverageStack _coverage = new();
         (int First, int Last) _group = (0, 0);
         bool _hasPendingHistory = false;
         Stack<(int First, int Last)> _undoGroups = null!;
@@ -1081,7 +1717,11 @@ namespace GameProject {
                 new KeyboardCondition(Keys.RightControl)
             );
 
-        Dictionary<string, DrawingData.Cam> _savedCams = null!;
+        Dictionary<string, SavedCamD> _savedCams = null!;
+
+        enum FlightPhase { Out, Pan, In }
+        FlightPhase _flightPhase;
+        SavedCamD? _flightCam;
 
         ICondition _loadCam1 = new Track.KeyboardCondition(Keys.D1);
         ICondition _saveCam1 =
@@ -1156,29 +1796,30 @@ namespace GameProject {
         bool _isErasing = false;
         bool _isMouseDrawing = false;
         bool _isTabletDrawing = false;
-        Vector2 _start;
-        Vector2 _end;
+        Vector2D _start;
+        Vector2D _end;
         float _radius = 10f;
         Color _color = TWColor.Gray300;
         Color _bgColor = TWColor.Black;
 
         ColorPicker _cp = null!;
 
-        Vector2 _mouseWorld;
-        Vector2 _dragAnchor = Vector2.Zero;
-        float _targetExp = 0f;
-        readonly float _expDistance = 0.002f;
-        readonly float _maxExp = -4f;
-        readonly float _minExp = 4f;
+        Vector2D _mouseWorld;
+        Vector2D _dragAnchor = Vector2D.Zero;
+        double _targetExp = 0.0;
+        readonly double _expDistance = 0.002;
+        // Sidebar range: the current frame's zoom band (zoom itself is unbounded).
+        readonly double _maxExp = -Math.Log(Frame.BandMax);
+        readonly double _minExp = -Math.Log(Frame.BandMin);
 
         float _radiusStart;
         Vector2 _thicknessStart;
-        float _expStart;
+        double _expStart;
         Vector2 _zoomStart;
         Vector2 _pinCamera;
 
-        float _preservedExp = 0f;
-        readonly float _hyperZoomExp = 4f;
+        double _preservedExp = 0.0;
+        readonly double _hyperZoomExp = 4.0;
 
         bool _showDebug = false;
 
@@ -1186,8 +1827,8 @@ namespace GameProject {
         static readonly ITween<float> _zoomSidebarWait = _zoomSidebarStart.Wait(1000);
         readonly ITween<float> _zoomSidebarTween = _zoomSidebarWait.To(0f, 1000, Easing.QuintOut);
 
-        readonly Vector2Tween _xy = new(Vector2.Zero, Vector2.Zero, 0, Easing.QuintOut);
-        readonly FloatTween _exp = new(0f, 0f, 0, Easing.QuintOut);
+        readonly Vector2DTween _xy = new(Vector2D.Zero, Vector2D.Zero, 0, EasingD.QuintOut);
+        readonly DoubleTween _exp = new(0.0, 0.0, 0, EasingD.QuintOut);
         readonly FloatTween _rotation = new(0f, 0f, 0, Easing.QuintOut);
 
         readonly FPSCounter _fps = new();
@@ -1196,7 +1837,7 @@ namespace GameProject {
         CWintabContext _logContext = null!;
         CWintabData _data = null!;
         bool _tabletIsValid = false;
-        Vector2 _lastTablet = Vector2.Zero;
+        Vector2D _lastTablet = Vector2D.Zero;
         float _lastPressure = 0f;
         #endif
 
