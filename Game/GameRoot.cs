@@ -23,7 +23,7 @@ using System.Text.Json.Serialization.Metadata;
 //       Rotation controls like Krita.
 
 namespace GameProject {
-    public class GameRoot : Game {
+    public partial class GameRoot : Game {
         public GameRoot() {
             _graphics = new GraphicsDeviceManager(this) {
                 GraphicsProfile = GraphicsProfile.HiDef
@@ -89,10 +89,10 @@ namespace GameProject {
             _fontSystem.AddFont(TitleContainer.OpenStream($"{Content.RootDirectory}/source-code-pro-medium.ttf"));
 
             _lines = [];
+            _strokes = [];
             _anchor = new Frame();
-            _undoGroups = [];
-            _redoGroups = [];
-            _redoLines = [];
+            _undoOps = [];
+            _redoOps = [];
             _savedCams = [];
 
             _camera = new CameraD(GraphicsDevice);
@@ -163,7 +163,9 @@ namespace GameProject {
             } else {
                 UpdateCamera();
 
-                if (!_isMouseDrawing && _thickness.Held()) {
+                if (_tool == Tool.Select) {
+                    UpdateSelect();
+                } else if (!_isMouseDrawing && _thickness.Held()) {
                     if (_thickness.Pressed()) {
                         _radiusStart = _radius;
                         _thicknessStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
@@ -184,9 +186,12 @@ namespace GameProject {
                 }
             }
 
-            if (!_isMouseDrawing) {
+            if (!_isMouseDrawing && _selGesture == SelGesture.None) {
                 if (_toggleEraser.Pressed()) {
-                    _isErasing = !_isErasing;
+                    SetTool(Tool.Erase);
+                }
+                if (_toggleSelect.Pressed()) {
+                    SetTool(Tool.Select);
                 }
 
                 if (_redo.Pressed()) {
@@ -282,7 +287,7 @@ namespace GameProject {
             _sb.Begin(_camera.View);
 
             var fgColor = _color;
-            if (_isErasing) {
+            if (_tool == Tool.Erase) {
                 fgColor = _bgColor;
             }
 
@@ -293,17 +298,62 @@ namespace GameProject {
             int fullCoverId = _coverage.Collect(_drawables, _camera.XY, _camera.Scale, _screenRadius);
             CollectVisible();
             _drawables.Sort(static (x, y) => x.Id.CompareTo(y.Id));
+            // A selection drag previews in view space: the trees are only touched on
+            // release, when the whole gesture commits as one MoveOp/ScaleOp.
+            Vector2 moveDelta = _selGesture == SelGesture.Move
+                ? (Vector2)((_moveCurrent - _moveOrigin) * _camera.Scale)
+                : Vector2.Zero;
+            float scaleF = _selGesture == SelGesture.Scale ? (float)ScaleFactor() : 1f;
+            Vector2 scaleC = _selGesture == SelGesture.Scale
+                ? _camera.WorldToView((_selBoundsMin + _selBoundsMax) / 2.0)
+                : Vector2.Zero;
             int inView = 0;
             foreach (var d in _drawables) {
                 if (d.Id < fullCoverId) continue;
                 var c = d.Color == TWColor.Transparent ? _bgColor : d.Color;
-                if (d.A == d.B) {
-                    _sb.FillCircle(d.A, d.Radius, c);
+                Vector2 a = d.A;
+                Vector2 b = d.B;
+                float r = d.Radius;
+                if (_selGesture != SelGesture.None && _selectedIds.Contains(d.Id)) {
+                    if (_selGesture == SelGesture.Move) {
+                        a += moveDelta;
+                        b += moveDelta;
+                    } else if (_selGesture == SelGesture.Scale) {
+                        a = scaleC + (a - scaleC) * scaleF;
+                        b = scaleC + (b - scaleC) * scaleF;
+                        r *= scaleF;
+                    }
+                }
+                if (a == b) {
+                    _sb.FillCircle(a, r, c);
                 } else {
-                    _sb.FillLine(d.A, d.B, d.Radius, c);
+                    _sb.FillLine(a, b, r, c);
                 }
                 inView++;
             }
+            // Accents draw after every fill so stroke joints don't overpaint them.
+            if (_selectedIds.Count > 0) {
+                foreach (var d in _drawables) {
+                    if (d.Id < fullCoverId || !_selectedIds.Contains(d.Id)) continue;
+                    Vector2 a = d.A;
+                    Vector2 b = d.B;
+                    float r = d.Radius;
+                    if (_selGesture == SelGesture.Move) {
+                        a += moveDelta;
+                        b += moveDelta;
+                    } else if (_selGesture == SelGesture.Scale) {
+                        a = scaleC + (a - scaleC) * scaleF;
+                        b = scaleC + (b - scaleC) * scaleF;
+                        r *= scaleF;
+                    }
+                    if (a == b) {
+                        _sb.FillCircle(a, MathF.Max(1f, r * 0.35f), SelectAccent);
+                    } else {
+                        _sb.FillLine(a, b, MathF.Max(1f, r * 0.35f), SelectAccent);
+                    }
+                }
+            }
+            DrawSelectOverlay(moveDelta);
             if (_isTabletDrawing) {
                 float pressure = _tabletPressure;
                 if (_line.Held()) {
@@ -314,19 +364,22 @@ namespace GameProject {
             if (_isMouseDrawing) {
                 _sb.FillLine(_camera.WorldToView(_start), _camera.WorldToView(_end), _radius, fgColor);
             }
-            if (_thickness.Held()) {
-                var thicknessView = _camera.WorldToView(_camera.ScreenToWorld(_thicknessStart));
-                _sb.FillCircle(thicknessView, _radius, fgColor);
-                if (_isErasing) {
-                    _sb.BorderCircle(thicknessView, _radius, TWColor.Black, 6f);
-                    _sb.BorderCircle(thicknessView, _radius - 2f, TWColor.White, 2f);
-                }
-            } else {
-                var mouseView = _camera.WorldToView(_mouseWorld);
-                _sb.FillCircle(mouseView, _radius * _tabletPressure, fgColor);
-                if (_isErasing) {
-                    _sb.BorderCircle(mouseView, _radius * _tabletPressure, TWColor.Black, 6f);
-                    _sb.BorderCircle(mouseView, (_radius - 2f) * _tabletPressure, TWColor.White, 2f);
+            // The Select tool has no brush: the OS cursor is the pointer.
+            if (_tool != Tool.Select) {
+                if (_thickness.Held()) {
+                    var thicknessView = _camera.WorldToView(_camera.ScreenToWorld(_thicknessStart));
+                    _sb.FillCircle(thicknessView, _radius, fgColor);
+                    if (_tool == Tool.Erase) {
+                        _sb.BorderCircle(thicknessView, _radius, TWColor.Black, 6f);
+                        _sb.BorderCircle(thicknessView, _radius - 2f, TWColor.White, 2f);
+                    }
+                } else {
+                    var mouseView = _camera.WorldToView(_mouseWorld);
+                    _sb.FillCircle(mouseView, _radius * _tabletPressure, fgColor);
+                    if (_tool == Tool.Erase) {
+                        _sb.BorderCircle(mouseView, _radius * _tabletPressure, TWColor.Black, 6f);
+                        _sb.BorderCircle(mouseView, (_radius - 2f) * _tabletPressure, TWColor.White, 2f);
+                    }
                 }
             }
 
@@ -446,7 +499,7 @@ namespace GameProject {
                     }
 
                     CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale() * _lastPressure);
-                    CreateGroup();
+                    CommitPending();
                 }
 
                 ranOnce = true;
@@ -477,7 +530,7 @@ namespace GameProject {
                 }
 
                 CreateLine(_start, _end, _radius * _camera.ScreenToWorldScale());
-                CreateGroup();
+                CommitPending();
             }
         }
 
@@ -752,6 +805,84 @@ namespace GameProject {
         }
 
         /// <summary>
+        /// Visits every line whose AABB intersects the probe (given in current anchor
+        /// units), walking the same frames with the same visibility thresholds as
+        /// CollectVisible — only content that can resolve on screen is hit, so a
+        /// sweeping edit can never touch invisible deep-frame data. The callback gets
+        /// the line's camera-relative geometry in pixels (A, B, Radius), the space
+        /// narrow phases run in.
+        /// </summary>
+        private void HitTestVisible(RectangleD probe, Action<Line, Vector2D, Vector2D, double> visit) {
+            long ix = (long)Math.Floor(_camera.XY.X);
+            long iy = (long)Math.Floor(_camera.XY.Y);
+            double fx = _camera.XY.X - ix;
+            double fy = _camera.XY.Y - iy;
+            double ppu = _camera.Scale;
+            // The probe rides along relative to the camera, like the view rect does.
+            double px = probe.X - _camera.XY.X;
+            double py = probe.Y - _camera.XY.Y;
+            double pw = probe.Width;
+            double ph = probe.Height;
+
+            Frame f = _anchor;
+            Frame? skip = null;
+            for (int height = 0; ; height++) {
+                HitTestFrame(f, ix, iy, fx, fy, ppu, px, py, pw, ph, height, skip, height <= MaxAncestorQuery, visit);
+                if (height >= MaxWalkHeight || f.Parent == null) break;
+
+                (long qx, long rx) = FloorDivMod(ix, Frame.CellCount);
+                (long qy, long ry) = FloorDivMod(iy, Frame.CellCount);
+                fx = (rx + fx) / Frame.K;
+                fy = (ry + fy) / Frame.K;
+                ix = qx + f.Index.X;
+                iy = qy + f.Index.Y;
+                ppu *= Frame.K;
+                px /= Frame.K;
+                py /= Frame.K;
+                pw /= Frame.K;
+                ph /= Frame.K;
+                skip = f;
+                f = f.Parent;
+            }
+        }
+
+        private void HitTestFrame(Frame f, long ix, long iy, double fx, double fy, double ppu, double px, double py, double pw, double ph, int height, Frame? skip, bool ownTree, Action<Line, Vector2D, Vector2D, double> visit) {
+            RectangleD probe = new(ix + fx + px, iy + fy + py, pw, ph);
+            if (ownTree && height <= MaxQueryHeight && f.Tree.Count > 0 && ppu * Frame.K >= 0.5) {
+                foreach (Line l in f.Tree.Query(probe)) {
+                    Vector2D a = new(((l.A.X - ix) - fx) * ppu, ((l.A.Y - iy) - fy) * ppu);
+                    Vector2D b = new(((l.B.X - ix) - fx) * ppu, ((l.B.Y - iy) - fy) * ppu);
+                    visit(l, a, b, l.Radius * ppu);
+                }
+            }
+
+            if (f.Children.Count == 0) return;
+
+            bool recurse = ppu >= 0.5;
+
+            // Strokes overhang their frame's cell by at most one cell width.
+            RectangleD near = new(probe.X - 1.0, probe.Y - 1.0, probe.Width + 2.0, probe.Height + 2.0);
+            foreach (Frame child in f.Children.Values) {
+                if (child == skip) continue;
+                var cell = new RectangleD(child.Index.X, child.Index.Y, 1.0, 1.0);
+                if (!cell.Intersects(near)) continue;
+                if (recurse) {
+                    double sx = fx * Frame.K;
+                    double sy = fy * Frame.K;
+                    long wx = (long)sx;
+                    long wy = (long)sy;
+                    HitTestFrame(child,
+                        (ix - child.Index.X) * Frame.CellCount + wx,
+                        (iy - child.Index.Y) * Frame.CellCount + wy,
+                        sx - wx, sy - wy,
+                        ppu / Frame.K,
+                        px * Frame.K, py * Frame.K, pw * Frame.K, ph * Frame.K,
+                        height - 1, null, true, visit);
+                }
+            }
+        }
+
+        /// <summary>
         /// Re-anchors the camera when it leaves its frame's cell or zoom band, applying
         /// the exact inverse transform to every piece of frame-relative state (tween
         /// endpoints and gesture anchors) so nothing observable changes.
@@ -785,6 +916,12 @@ namespace GameProject {
             _mouseWorld = _mouseWorld / Frame.K + idx;
             _start = _start / Frame.K + idx;
             _end = _end / Frame.K + idx;
+            _marqueeA = _marqueeA / Frame.K + idx;
+            _marqueeB = _marqueeB / Frame.K + idx;
+            _moveOrigin = _moveOrigin / Frame.K + idx;
+            _moveCurrent = _moveCurrent / Frame.K + idx;
+            _selBoundsMin = _selBoundsMin / Frame.K + idx;
+            _selBoundsMax = _selBoundsMax / Frame.K + idx;
             ShiftExp(-Frame.LnK);
             _anchor = parent;
             _coverage.OnAscend(idx, AncestorAt(_anchor, MaxAncestorQuery));
@@ -808,6 +945,12 @@ namespace GameProject {
             _mouseWorld = (_mouseWorld - idx) * Frame.K;
             _start = (_start - idx) * Frame.K;
             _end = (_end - idx) * Frame.K;
+            _marqueeA = (_marqueeA - idx) * Frame.K;
+            _marqueeB = (_marqueeB - idx) * Frame.K;
+            _moveOrigin = (_moveOrigin - idx) * Frame.K;
+            _moveCurrent = (_moveCurrent - idx) * Frame.K;
+            _selBoundsMin = (_selBoundsMin - idx) * Frame.K;
+            _selBoundsMax = (_selBoundsMax - idx) * Frame.K;
             ShiftExp(Frame.LnK);
             _anchor = child;
             _coverage.OnDescend(idx);
@@ -1088,8 +1231,10 @@ namespace GameProject {
             if (_isMouseDrawing || _isTabletDrawing) {
                 _isMouseDrawing = false;
                 _isTabletDrawing = false;
-                CreateGroup();
+                CommitPending();
             }
+            _selGesture = SelGesture.None;
+            ClearSelection();
             _anchor = cam.Node;
             _dragAnchor = cam.XY;
             _mouseWorld = cam.XY;
@@ -1143,94 +1288,208 @@ namespace GameProject {
         }
 
         private void CreateLine(Vector2D a, Vector2D b, double radius) {
-            var c = _isErasing ? TWColor.Transparent : _color;
+            // Erasing paints with the background color rather than deleting: it stays
+            // exactly as accurate as the cursor, where segment deletion takes whole
+            // segments in one go. True deletion lives on the Select tool instead, and
+            // since moves and scales are proportional, an eraser mark selected along
+            // with what it covers stays in sync with it.
+            var c = _tool == Tool.Erase ? TWColor.Transparent : _color;
             var (f, na, nb, nr) = NormalizeAnchor(_anchor, a, b, radius);
-            Line l = new(_nextId++, na, nb, nr, c) { Node = f };
+            Line l = new(_nextId++, na, nb, nr, c) { Node = f, StrokeId = _group.First };
 
-            l.Leaf = f.Tree.Add(l.AABB, l);
-            f.BubbleAdd(l.AABB, l.Id, c == TWColor.Transparent ? null : c);
-            _lines.Add(l.Id, l);
+            AttachLine(l);
             _group.Last = l.Id;
             _hasPendingHistory = true;
         }
-        private void CreateGroup() {
+        private void CommitPending() {
             if (_hasPendingHistory) {
-                _undoGroups.Push(_group);
+                _undoOps.Push(new DrawOp { First = _group.First, Last = _group.Last });
                 _group = (_nextId, _nextId);
-                _redoGroups.Clear();
-                _redoLines.Clear();
+                _redoOps.Clear();
                 _hasPendingHistory = false;
             }
         }
+        private void AttachLine(Line l) {
+            l.Leaf = l.Node.Tree.Add(l.AABB, l);
+            l.Node.BubbleAdd(l.AABB, l.Id, l.Color == TWColor.Transparent ? null : l.Color);
+            _lines.Add(l.Id, l);
+            if (!_strokes.TryGetValue(l.StrokeId, out List<Line>? stroke)) {
+                stroke = [];
+                _strokes.Add(l.StrokeId, stroke);
+            }
+            stroke.Add(l);
+        }
+        private void DetachLine(Line l) {
+            l.Node.Tree.Remove(l.Leaf);
+            l.Node.BubbleRemove();
+            _lines.Remove(l.Id);
+            List<Line> stroke = _strokes[l.StrokeId];
+            stroke.Remove(l);
+            if (stroke.Count == 0) {
+                _strokes.Remove(l.StrokeId);
+            }
+        }
         private void Undo() {
-            if (_undoGroups.Count > 0) {
-                var group = _undoGroups.Pop();
-                for (int i = group.First; i <= group.Last; i++) {
-                    Line l = _lines[i];
-                    _lines.Remove(i);
-                    l.Node.Tree.Remove(l.Leaf);
-                    l.Node.BubbleRemove();
-
-                    _redoLines.Push(l);
-                }
-                _redoGroups.Push(group);
-                _nextId = group.First;
-                _group = (_nextId, _nextId);
+            if (_undoOps.Count > 0) {
+                EditOp op = _undoOps.Pop();
+                RevertOp(op);
+                _redoOps.Push(op);
+                // Ops may delete or replace selected lines out from under the selection.
+                ClearSelection();
                 RebuildCoverage();
             }
         }
         private void Redo() {
-            if (_redoGroups.Count > 0) {
-                var group = _redoGroups.Pop();
-                while (true) {
-                    var l = _redoLines.Pop();
-                    l.Leaf = l.Node.Tree.Add(l.AABB, l);
-                    l.Node.BubbleAdd(l.AABB, l.Id, l.Color == TWColor.Transparent ? null : l.Color);
-                    _lines.Add(l.Id, l);
-                    _group.Last = l.Id;
-
-                    if (l.Id == group.First) break;
-                }
-                _undoGroups.Push(group);
-                _nextId = group.Last + 1;
-                _group = (_nextId, _nextId);
+            if (_redoOps.Count > 0) {
+                EditOp op = _redoOps.Pop();
+                ApplyOp(op);
+                _undoOps.Push(op);
+                ClearSelection();
                 RebuildCoverage();
             }
         }
         private void UndoAll() {
-            while (_undoGroups.Count > 0) {
-                var group = _undoGroups.Pop();
-                for (int i = group.First; i <= group.Last; i++) {
-                    Line l = _lines[i];
-                    _lines.Remove(i);
-                    l.Node.Tree.Remove(l.Leaf);
-                    l.Node.BubbleRemove();
-
-                    _redoLines.Push(l);
-                }
-                _redoGroups.Push(group);
-                _nextId = group.First;
-                _group = (_nextId, _nextId);
+            while (_undoOps.Count > 0) {
+                EditOp op = _undoOps.Pop();
+                RevertOp(op);
+                _redoOps.Push(op);
             }
+            ClearSelection();
             RebuildCoverage();
         }
         private void RedoAll() {
-            while (_redoGroups.Count > 0) {
-                var group = _redoGroups.Pop();
-                while (true) {
-                    var l = _redoLines.Pop();
-                    l.Leaf = l.Node.Tree.Add(l.AABB, l);
-                    l.Node.BubbleAdd(l.AABB, l.Id, l.Color == TWColor.Transparent ? null : l.Color);
-                    _lines.Add(l.Id, l);
-                    _group.Last = l.Id;
-
-                    if (l.Id == group.First) break;
-                }
-                _undoGroups.Push(group);
-                _nextId = group.Last + 1;
-                _group = (_nextId, _nextId);
+            while (_redoOps.Count > 0) {
+                EditOp op = _redoOps.Pop();
+                ApplyOp(op);
+                _undoOps.Push(op);
             }
+            ClearSelection();
             RebuildCoverage();
+        }
+        private void RevertOp(EditOp op) {
+            switch (op) {
+                case DrawOp d:
+                    // Every id in the range is alive: any later op touching it was
+                    // already reverted (LIFO), and only draws mint ids.
+                    d.Lines = new List<Line>(d.Last - d.First + 1);
+                    for (int i = d.First; i <= d.Last; i++) {
+                        Line l = _lines[i];
+                        DetachLine(l);
+                        d.Lines.Add(l);
+                    }
+                    _nextId = d.First;
+                    _group = (_nextId, _nextId);
+                    break;
+                case DeleteOp del:
+                    foreach (Line l in del.Lines) {
+                        AttachLine(l);
+                    }
+                    break;
+                case MoveOp m:
+                    RestoreSnapshots(m.Originals);
+                    break;
+                case ScaleOp s:
+                    RestoreSnapshots(s.Originals);
+                    break;
+            }
+        }
+        private void ApplyOp(EditOp op) {
+            switch (op) {
+                case DrawOp d:
+                    foreach (Line l in d.Lines!) {
+                        AttachLine(l);
+                    }
+                    d.Lines = null;
+                    _nextId = d.Last + 1;
+                    _group = (_nextId, _nextId);
+                    break;
+                case DeleteOp del:
+                    foreach (Line l in del.Lines) {
+                        DetachLine(l);
+                    }
+                    break;
+                case MoveOp m:
+                    ApplyMove(m);
+                    break;
+                case ScaleOp s:
+                    ApplyScale(s);
+                    break;
+            }
+        }
+        private void RestoreSnapshots(List<LineSnapshot> snapshots) {
+            foreach (LineSnapshot s in snapshots) {
+                Line l = s.Line;
+                DetachLine(l);
+                l.Node = s.Node;
+                l.A = s.A;
+                l.B = s.B;
+                l.Radius = s.Radius;
+                l.RecomputeAABB();
+                AttachLine(l);
+            }
+        }
+        private void ApplyMove(MoveOp m) {
+            foreach (LineSnapshot s in m.Originals) {
+                Line l = s.Line;
+                DetachLine(l);
+                // Unit ratios between levels are exact powers of two, so the delta
+                // converts exactly into each line's own frame. Recomputing from the
+                // snapshot (not the live state) makes redo bit-identical.
+                Vector2D delta = m.Delta * Math.ScaleB(1.0, 16 * (int)(s.Node.Level - m.Ref.Level));
+                var (f, a, b, r) = NormalizeAnchor(s.Node, s.A + delta, s.B + delta, s.Radius);
+                l.Node = f;
+                l.A = a;
+                l.B = b;
+                l.Radius = r;
+                l.RecomputeAABB();
+                AttachLine(l);
+            }
+        }
+        private void ApplyScale(ScaleOp op) {
+            foreach (LineSnapshot s in op.Originals) {
+                Line l = s.Line;
+                DetachLine(l);
+                Vector2D c = TransformPoint(op.Ref, s.Node, op.Center);
+                Vector2D a = c + (s.A - c) * op.Factor;
+                Vector2D b = c + (s.B - c) * op.Factor;
+                var (f, na, nb, nr) = NormalizeAnchor(s.Node, a, b, s.Radius * op.Factor);
+                l.Node = f;
+                l.A = na;
+                l.B = nb;
+                l.Radius = nr;
+                l.RecomputeAABB();
+                AttachLine(l);
+            }
+        }
+        /// <summary>
+        /// Expresses a point given in one frame's units in another frame's units:
+        /// raises it to the common ancestor, then descends the target's chain. Both
+        /// frames sit within a few levels of each other when editing (the content was
+        /// on screen), so the descent precision cap that limits TransformCam does not
+        /// bite here.
+        /// </summary>
+        private static Vector2D TransformPoint(Frame from, Frame to, Vector2D p) {
+            Frame b = from;
+            Frame a = to;
+            while (b.Level > a.Level) {
+                p = p / Frame.K + b.IndexOffset;
+                b = b.Parent!;
+            }
+            List<Frame> chain = [];
+            while (a.Level > b.Level) {
+                chain.Add(a);
+                a = a.Parent!;
+            }
+            while (a != b) {
+                chain.Add(a);
+                a = a.Parent!;
+                p = p / Frame.K + b.IndexOffset;
+                b = b.Parent!;
+            }
+            for (int i = chain.Count - 1; i >= 0; i--) {
+                p = (p - chain[i].IndexOffset) * Frame.K;
+            }
+            return p;
         }
         private void SaveDrawing() {
             // Serialize the frame tree as a flat list, parents before children (nested
@@ -1250,7 +1509,7 @@ namespace GameProject {
             }
 
             DrawingData dd = new() {
-                Version = 2,
+                Version = 3,
                 NextId = _nextId,
                 BackgroundColor = new DrawingData.Color { R = _bgColor.R, G = _bgColor.G, B = _bgColor.B },
                 Nodes = frames.Select(f => new DrawingData.JsonNode {
@@ -1258,21 +1517,12 @@ namespace GameProject {
                     ParentId = f.Parent == null ? -1 : frameIds[f.Parent],
                     I = f.Index.X,
                     J = f.Index.Y,
-                    Lines = f.Tree.Select(ToJsonLine).ToList()
+                    // By id so the output is canonical: the tree's enumeration order
+                    // depends on its insertion history, which undo/redo can shuffle.
+                    Lines = f.Tree.Select(ToJsonLine).OrderBy(l => l.Id).ToList()
                 }).ToList(),
-                UndoGroups = _undoGroups.Select(e => new DrawingData.Group {
-                    First = e.First,
-                    Last = e.Last
-                }).ToList(),
-                RedoGroups = _redoGroups.Select(e => new DrawingData.Group {
-                    First = e.First,
-                    Last = e.Last
-                }).ToList(),
-                RedoLines = _redoLines.Select(e => {
-                    var line = ToJsonLine(e);
-                    line.NodeId = frameIds[e.Node];
-                    return line;
-                }).ToList(),
+                UndoOps = _undoOps.Select(op => ToJsonOp(op, frameIds)).ToList(),
+                RedoOps = _redoOps.Select(op => ToJsonOp(op, frameIds)).ToList(),
 
                 Camera = ToJsonCam(frameIds, _anchor, _camera.XY, ScaleToExp(_camera.Scale), _camera.Rotation),
 
@@ -1289,7 +1539,56 @@ namespace GameProject {
                 A = new DrawingData.XY { X = e.A.X, Y = e.A.Y },
                 B = new DrawingData.XY { X = e.B.X, Y = e.B.Y },
                 Radius = e.Radius,
-                Color = e.Color == TWColor.Transparent ? null : new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B }
+                Color = e.Color == TWColor.Transparent ? null : new DrawingData.Color { R = e.Color.R, G = e.Color.G, B = e.Color.B },
+                StrokeId = e.StrokeId
+            };
+        }
+        private static DrawingData.JsonLine ToJsonLine(Line e, Dictionary<Frame, int> frameIds) {
+            var line = ToJsonLine(e);
+            line.NodeId = frameIds[e.Node];
+            return line;
+        }
+        private static DrawingData.JsonOp ToJsonOp(EditOp op, Dictionary<Frame, int> frameIds) {
+            switch (op) {
+                case DrawOp d:
+                    return new DrawingData.JsonOp {
+                        Type = "draw",
+                        First = d.First,
+                        Last = d.Last,
+                        Lines = d.Lines?.Select(l => ToJsonLine(l, frameIds)).ToList()
+                    };
+                case DeleteOp del:
+                    return new DrawingData.JsonOp {
+                        Type = "delete",
+                        Lines = del.Lines.Select(l => ToJsonLine(l, frameIds)).ToList()
+                    };
+                case MoveOp m:
+                    return new DrawingData.JsonOp {
+                        Type = "move",
+                        RefId = frameIds[m.Ref],
+                        Delta = new DrawingData.XY { X = m.Delta.X, Y = m.Delta.Y },
+                        Originals = m.Originals.Select(s => ToJsonSnapshot(s, frameIds)).ToList()
+                    };
+                case ScaleOp s:
+                    return new DrawingData.JsonOp {
+                        Type = "scale",
+                        RefId = frameIds[s.Ref],
+                        Center = new DrawingData.XY { X = s.Center.X, Y = s.Center.Y },
+                        Factor = s.Factor,
+                        Originals = s.Originals.Select(o => ToJsonSnapshot(o, frameIds)).ToList()
+                    };
+                default:
+                    throw new InvalidOperationException($"Unknown op type: {op.GetType().Name}");
+            }
+        }
+        private static DrawingData.JsonLine ToJsonSnapshot(LineSnapshot s, Dictionary<Frame, int> frameIds) {
+            return new DrawingData.JsonLine {
+                Id = s.Line.Id,
+                A = new DrawingData.XY { X = s.A.X, Y = s.A.Y },
+                B = new DrawingData.XY { X = s.B.X, Y = s.B.Y },
+                Radius = s.Radius,
+                Color = null,
+                NodeId = frameIds[s.Node]
             };
         }
         private static DrawingData.Cam ToJsonCam(Dictionary<Frame, int> frameIds, Frame node, Vector2D xy, double exp, float rotation) {
@@ -1319,26 +1618,20 @@ namespace GameProject {
             _group = (_nextId, _nextId);
             _bgColor = new Color(dd.BackgroundColor.R, dd.BackgroundColor.G, dd.BackgroundColor.B);
 
-            if (dd.Version >= 2) {
-                LoadDrawingV2(dd);
+            if (dd.Version >= 3) {
+                LoadDrawingV3(dd);
+            } else if (dd.Version == 2) {
+                BackupV2Drawing(dd);
+                MigrateGroups(dd, LoadDrawingV2(dd));
             } else {
                 BackupV1Drawing(dd);
-                LoadDrawingV1(dd);
-            }
-
-            for (int i = dd.UndoGroups.Count - 1; i >= 0; i--) {
-                var group = dd.UndoGroups[i];
-                _undoGroups.Push((group.First, group.Last));
-            }
-            for (int i = dd.RedoGroups.Count - 1; i >= 0; i--) {
-                var group = dd.RedoGroups[i];
-                _redoGroups.Push((group.First, group.Last));
+                MigrateGroups(dd, LoadDrawingV1(dd));
             }
 
             RebaseCamera();
             RebuildCoverage();
         }
-        private void LoadDrawingV2(DrawingData dd) {
+        private void LoadDrawingV3(DrawingData dd) {
             List<Frame> frames = [];
             foreach (var n in dd.Nodes) {
                 Frame f;
@@ -1349,20 +1642,116 @@ namespace GameProject {
                 }
                 frames.Add(f);
                 foreach (var e in n.Lines) {
-                    Line l = new(e.Id, new Vector2D(e.A.X, e.A.Y), new Vector2D(e.B.X, e.B.Y), e.Radius, JsonColor(e.Color)) { Node = f };
-                    l.Leaf = f.Tree.Add(l.AABB, l);
-                    f.BubbleAdd(l.AABB, l.Id, l.Color == TWColor.Transparent ? null : l.Color);
-                    _lines.Add(l.Id, l);
+                    AttachLine(NewLine(e, f));
                 }
             }
             Frame root = frames.Count > 0 ? frames[0] : new Frame();
 
-            for (int i = dd.RedoLines.Count - 1; i >= 0; i--) {
-                var e = dd.RedoLines[i];
-                Frame f = e.NodeId >= 0 && e.NodeId < frames.Count ? frames[e.NodeId] : root;
-                _redoLines.Push(new Line(e.Id, new Vector2D(e.A.X, e.A.Y), new Vector2D(e.B.X, e.B.Y), e.Radius, JsonColor(e.Color)) { Node = f });
+            // Every line an op references lives in exactly one place: the live set, an
+            // undo-stack DeleteOp, or a redo-stack DrawOp (LIFO guarantees this).
+            // Materialize the dead ones into the map first, then wire the by-id
+            // references (move/scale snapshots, redo deletes) to those instances.
+            Dictionary<int, Line> byId = new(_lines);
+            List<(DrawingData.JsonOp Json, EditOp Op)> undoOps =
+                dd.UndoOps.Select(j => (j, MaterializeOp(j, frames, root, byId, redo: false))).ToList();
+            List<(DrawingData.JsonOp Json, EditOp Op)> redoOps =
+                dd.RedoOps.Select(j => (j, MaterializeOp(j, frames, root, byId, redo: true))).ToList();
+            foreach (var (json, op) in undoOps) {
+                ResolveOp(json, op, frames, root, byId, redo: false);
+            }
+            foreach (var (json, op) in redoOps) {
+                ResolveOp(json, op, frames, root, byId, redo: true);
+            }
+            for (int i = undoOps.Count - 1; i >= 0; i--) {
+                _undoOps.Push(undoOps[i].Op);
+            }
+            for (int i = redoOps.Count - 1; i >= 0; i--) {
+                _redoOps.Push(redoOps[i].Op);
             }
 
+            LoadCams(dd, root);
+        }
+        private static Line NewLine(DrawingData.JsonLine e, Frame f) {
+            return new Line(e.Id, new Vector2D(e.A.X, e.A.Y), new Vector2D(e.B.X, e.B.Y), e.Radius, JsonColor(e.Color)) {
+                Node = f,
+                StrokeId = e.StrokeId >= 0 ? e.StrokeId : e.Id
+            };
+        }
+        private static Frame FrameAt(List<Frame> frames, Frame root, int id) {
+            return id >= 0 && id < frames.Count ? frames[id] : root;
+        }
+        private static EditOp MaterializeOp(DrawingData.JsonOp json, List<Frame> frames, Frame root, Dictionary<int, Line> byId, bool redo) {
+            switch (json.Type) {
+                case "delete": {
+                    DeleteOp op = new();
+                    if (!redo && json.Lines != null) {
+                        // Undo-stack deletes own their dead lines.
+                        foreach (var e in json.Lines) {
+                            Line l = NewLine(e, FrameAt(frames, root, e.NodeId));
+                            byId[l.Id] = l;
+                            op.Lines.Add(l);
+                        }
+                    }
+                    return op;
+                }
+                case "move":
+                    return new MoveOp {
+                        Ref = FrameAt(frames, root, json.RefId),
+                        Delta = new Vector2D(json.Delta?.X ?? 0.0, json.Delta?.Y ?? 0.0)
+                    };
+                case "scale":
+                    return new ScaleOp {
+                        Ref = FrameAt(frames, root, json.RefId),
+                        Center = new Vector2D(json.Center?.X ?? 0.0, json.Center?.Y ?? 0.0),
+                        Factor = json.Factor
+                    };
+                default: {
+                    DrawOp op = new() { First = json.First, Last = json.Last };
+                    if (redo && json.Lines != null) {
+                        op.Lines = json.Lines.Select(e => {
+                            Line l = NewLine(e, FrameAt(frames, root, e.NodeId));
+                            byId[l.Id] = l;
+                            return l;
+                        }).ToList();
+                    }
+                    return op;
+                }
+            }
+        }
+        private static void ResolveOp(DrawingData.JsonOp json, EditOp op, List<Frame> frames, Frame root, Dictionary<int, Line> byId, bool redo) {
+            switch (op) {
+                case DeleteOp del when redo && json.Lines != null:
+                    // Redo-stack deletes reference lines that are alive or held by a
+                    // redo DrawOp above them.
+                    foreach (var e in json.Lines) {
+                        if (byId.TryGetValue(e.Id, out Line? l)) {
+                            del.Lines.Add(l);
+                        }
+                    }
+                    break;
+                case MoveOp m when json.Originals != null:
+                    m.Originals = ResolveSnapshots(json.Originals, frames, root, byId);
+                    break;
+                case ScaleOp s when json.Originals != null:
+                    s.Originals = ResolveSnapshots(json.Originals, frames, root, byId);
+                    break;
+            }
+        }
+        private static List<LineSnapshot> ResolveSnapshots(List<DrawingData.JsonLine> originals, List<Frame> frames, Frame root, Dictionary<int, Line> byId) {
+            List<LineSnapshot> result = new(originals.Count);
+            foreach (var e in originals) {
+                if (!byId.TryGetValue(e.Id, out Line? l)) continue;
+                result.Add(new LineSnapshot {
+                    Line = l,
+                    Node = FrameAt(frames, root, e.NodeId),
+                    A = new Vector2D(e.A.X, e.A.Y),
+                    B = new Vector2D(e.B.X, e.B.Y),
+                    Radius = e.Radius
+                });
+            }
+            return result;
+        }
+        private void LoadCams(DrawingData dd, Frame root) {
             (_anchor, Vector2D xy, double exp) = FromJsonCam(root, dd.Camera);
             SetXYTween(xy, 0);
             SetExpTween(exp, 0);
@@ -1371,6 +1760,93 @@ namespace GameProject {
             foreach (var kv in dd.SavedCams) {
                 var (node, camXY, camExp) = FromJsonCam(root, kv.Value);
                 _savedCams[kv.Key] = new SavedCamD { Node = node, XY = camXY, Exp = camExp, Rotation = kv.Value.Rotation };
+            }
+        }
+        private List<Line> LoadDrawingV2(DrawingData dd) {
+            List<(int First, int Last)> ranges = GroupRanges(dd);
+            List<Frame> frames = [];
+            foreach (var n in dd.Nodes) {
+                Frame f;
+                if (n.ParentId < 0 || n.ParentId >= frames.Count) {
+                    f = new Frame();
+                } else {
+                    f = frames[n.ParentId].GetOrCreateChild((n.I, n.J));
+                }
+                frames.Add(f);
+                foreach (var e in n.Lines) {
+                    Line l = new(e.Id, new Vector2D(e.A.X, e.A.Y), new Vector2D(e.B.X, e.B.Y), e.Radius, JsonColor(e.Color)) {
+                        Node = f,
+                        StrokeId = DeriveStrokeId(ranges, e.Id)
+                    };
+                    AttachLine(l);
+                }
+            }
+            Frame root = frames.Count > 0 ? frames[0] : new Frame();
+
+            List<Line> redoLines = dd.RedoLines.Select(e => new Line(e.Id, new Vector2D(e.A.X, e.A.Y), new Vector2D(e.B.X, e.B.Y), e.Radius, JsonColor(e.Color)) {
+                Node = FrameAt(frames, root, e.NodeId),
+                StrokeId = DeriveStrokeId(ranges, e.Id)
+            }).ToList();
+
+            LoadCams(dd, root);
+            return redoLines;
+        }
+        /// <summary>
+        /// Converts the pre-v3 id-range group stacks into DrawOps. redoLines is in
+        /// file order: the top group's lines first (ids descending within a group),
+        /// matching how the old Undo pushed them.
+        /// </summary>
+        private void MigrateGroups(DrawingData dd, List<Line> redoLines) {
+            for (int i = dd.UndoGroups.Count - 1; i >= 0; i--) {
+                var g = dd.UndoGroups[i];
+                _undoOps.Push(new DrawOp { First = g.First, Last = g.Last });
+            }
+            List<DrawOp> redoOps = [];
+            int cursor = 0;
+            foreach (var g in dd.RedoGroups) {
+                int count = g.Last - g.First + 1;
+                if (cursor + count > redoLines.Count) break;
+                redoOps.Add(new DrawOp { First = g.First, Last = g.Last, Lines = redoLines.GetRange(cursor, count) });
+                cursor += count;
+            }
+            for (int i = redoOps.Count - 1; i >= 0; i--) {
+                _redoOps.Push(redoOps[i]);
+            }
+        }
+        private static List<(int First, int Last)> GroupRanges(DrawingData dd) {
+            List<(int First, int Last)> ranges = dd.UndoGroups.Concat(dd.RedoGroups)
+                .Select(g => (g.First, g.Last)).ToList();
+            ranges.Sort();
+            return ranges;
+        }
+        private static int DeriveStrokeId(List<(int First, int Last)> ranges, int id) {
+            int lo = 0, hi = ranges.Count - 1, best = -1;
+            while (lo <= hi) {
+                int mid = lo + (hi - lo) / 2;
+                if (ranges[mid].First <= id) {
+                    best = mid;
+                    lo = mid + 1;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            if (best >= 0 && id <= ranges[best].Last) return ranges[best].First;
+            return id;
+        }
+        private static void BackupV2Drawing(DrawingData dd) {
+            // Same safety net as the v1 migration: a v2 build reads a v3 file's Nodes
+            // fine but sees empty group stacks, so it would auto-save over the op
+            // history on exit.
+            if (dd.Nodes.Count == 0 && dd.RedoLines.Count == 0) return;
+
+            string source = GetPath("Drawing.json");
+            string backup = GetPath("Drawing.v2.bak.json");
+            try {
+                if (File.Exists(source) && !File.Exists(backup)) {
+                    File.Copy(source, backup);
+                }
+            } catch (Exception ex) {
+                Console.WriteLine($"Drawing backup failed: {ex}");
             }
         }
         private static void BackupV1Drawing(DrawingData dd) {
@@ -1389,22 +1865,26 @@ namespace GameProject {
                 Console.WriteLine($"Drawing backup failed: {ex}");
             }
         }
-        private void LoadDrawingV1(DrawingData dd) {
+        private List<Line> LoadDrawingV1(DrawingData dd) {
             // v1: float coordinates in one flat world frame. Everything lands in a
             // fresh root and gets re-homed to the proper cells by NormalizeAnchor.
+            List<(int First, int Last)> ranges = GroupRanges(dd);
             Frame root = _anchor;
             foreach (var e in dd.Lines) {
                 var (f, a, b, r) = NormalizeAnchor(root, new Vector2D(e.A.X, e.A.Y), new Vector2D(e.B.X, e.B.Y), e.Radius);
-                Line l = new(e.Id, a, b, r, JsonColor(e.Color)) { Node = f };
-                l.Leaf = f.Tree.Add(l.AABB, l);
-                f.BubbleAdd(l.AABB, l.Id, l.Color == TWColor.Transparent ? null : l.Color);
-                _lines.Add(l.Id, l);
+                Line l = new(e.Id, a, b, r, JsonColor(e.Color)) {
+                    Node = f,
+                    StrokeId = DeriveStrokeId(ranges, e.Id)
+                };
+                AttachLine(l);
             }
-            for (int i = dd.RedoLines.Count - 1; i >= 0; i--) {
-                var e = dd.RedoLines[i];
+            List<Line> redoLines = dd.RedoLines.Select(e => {
                 var (f, a, b, r) = NormalizeAnchor(root, new Vector2D(e.A.X, e.A.Y), new Vector2D(e.B.X, e.B.Y), e.Radius);
-                _redoLines.Push(new Line(e.Id, a, b, r, JsonColor(e.Color)) { Node = f });
-            }
+                return new Line(e.Id, a, b, r, JsonColor(e.Color)) {
+                    Node = f,
+                    StrokeId = DeriveStrokeId(ranges, e.Id)
+                };
+            }).ToList();
 
             SetXYTween(new Vector2D(dd.Camera.X, dd.Camera.Y), 0);
             SetExpTween(ScaleToExp(ZToScale(dd.Camera.Z)), 0);
@@ -1418,6 +1898,7 @@ namespace GameProject {
                     Rotation = kv.Value.Rotation
                 };
             }
+            return redoLines;
         }
         private static Color JsonColor(DrawingData.Color? c) {
             return c == null ? TWColor.Transparent : new Color(c.R, c.G, c.B);
@@ -1624,14 +2105,15 @@ namespace GameProject {
 
         Frame _anchor = null!;
         Dictionary<int, Line> _lines = null!;
+        // Live lines of each stroke, keyed by StrokeId. Kept in sync with _lines.
+        Dictionary<int, List<Line>> _strokes = null!;
         readonly List<Drawable> _drawables = [];
         float _screenRadius;
         readonly CoverageStack _coverage = new();
         (int First, int Last) _group = (0, 0);
         bool _hasPendingHistory = false;
-        Stack<(int First, int Last)> _undoGroups = null!;
-        Stack<(int First, int Last)> _redoGroups = null!;
-        Stack<Line> _redoLines = null!;
+        Stack<EditOp> _undoOps = null!;
+        Stack<EditOp> _redoOps = null!;
 
         int _nextId;
 
@@ -1840,7 +2322,6 @@ namespace GameProject {
                 new MouseCondition(MouseButton.XButton2)
             );
 
-        bool _isErasing = false;
         bool _isMouseDrawing = false;
         bool _isTabletDrawing = false;
         Vector2D _start;

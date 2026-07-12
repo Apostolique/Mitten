@@ -4,7 +4,9 @@ using System.Text.Json.Serialization;
 namespace GameProject {
     public class DrawingData {
         // Files without the field deserialize as version 1 (flat float lines in one
-        // frame); SaveDrawing always writes version 2 (frame tree, double coords).
+        // frame). Version 2 added the frame tree and double coords; version 3 replaced
+        // the UndoGroups/RedoGroups/RedoLines trio with the UndoOps/RedoOps stacks.
+        // SaveDrawing always writes version 3.
         public int Version { get; set; } = 1;
         public Cam Camera { get; set; } = new Cam();
         public int NextId { get; set; } = 0;
@@ -14,6 +16,9 @@ namespace GameProject {
         public List<Group> UndoGroups { get; set; } = new List<Group>();
         public List<Group> RedoGroups { get; set; } = new List<Group>();
         public List<JsonLine> RedoLines { get; set; } = new List<JsonLine>();
+        // v3: history stacks, entry 0 = top of the stack.
+        public List<JsonOp> UndoOps { get; set; } = new List<JsonOp>();
+        public List<JsonOp> RedoOps { get; set; } = new List<JsonOp>();
         public Dictionary<string, Cam> SavedCams { get; set; } = new Dictionary<string, Cam>();
 
         public class Cam {
@@ -44,8 +49,27 @@ namespace GameProject {
             public XY B { get; set; } = new XY();
             public double Radius { get; set; } = 10.0;
             public Color? Color { get; set; } = new Color();
-            // v2 redo lines only: index of the node the line is anchored to.
+            // Detached lines only (redo lines, op lines): index of the node the line
+            // is anchored to.
             public int NodeId { get; set; } = 0;
+            // v3: id of the first segment of the pen stroke this segment belongs to.
+            // Negative on older files; the loader derives it from the group ranges.
+            public int StrokeId { get; set; } = -1;
+        }
+        // One history op, tagged by Type. draw: First/Last, plus Lines when the op is
+        // in the redo stack. delete: Lines (with NodeId). move: RefId + Delta +
+        // Originals. scale: RefId + Center + Factor + Originals. Originals entries use
+        // Id to reference the affected line and NodeId/A/B/Radius as its snapshot.
+        public class JsonOp {
+            public string Type { get; set; } = "draw";
+            public int First { get; set; } = 0;
+            public int Last { get; set; } = 0;
+            public List<JsonLine>? Lines { get; set; } = null;
+            public List<JsonLine>? Originals { get; set; } = null;
+            public int RefId { get; set; } = -1;
+            public XY? Delta { get; set; } = null;
+            public XY? Center { get; set; } = null;
+            public double Factor { get; set; } = 1.0;
         }
         public class XY {
             public double X { get; set; } = 0;

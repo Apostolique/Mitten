@@ -49,6 +49,68 @@ namespace GameProject {
         public override readonly string ToString() => $"{{X:{X} Y:{Y}}}";
     }
 
+    public static class MathD {
+        /// <summary>
+        /// Distance between the closest points of two segments (Ericson, Real-Time
+        /// Collision Detection §5.1.9). Handles degenerate (point) segments. Two
+        /// capsules touch when this is at most the sum of their radii.
+        /// </summary>
+        public static double SegmentSegmentDistance(Vector2D p1, Vector2D q1, Vector2D p2, Vector2D q2) {
+            Vector2D d1 = q1 - p1;
+            Vector2D d2 = q2 - p2;
+            Vector2D r = p1 - p2;
+            double a = Vector2D.Dot(d1, d1);
+            double e = Vector2D.Dot(d2, d2);
+            double f = Vector2D.Dot(d2, r);
+            double s, t;
+            if (a <= double.Epsilon && e <= double.Epsilon) {
+                s = 0.0;
+                t = 0.0;
+            } else if (a <= double.Epsilon) {
+                s = 0.0;
+                t = Math.Clamp(f / e, 0.0, 1.0);
+            } else {
+                double c = Vector2D.Dot(d1, r);
+                if (e <= double.Epsilon) {
+                    t = 0.0;
+                    s = Math.Clamp(-c / a, 0.0, 1.0);
+                } else {
+                    double b = Vector2D.Dot(d1, d2);
+                    double denom = a * e - b * b;
+                    s = denom > 0.0 ? Math.Clamp((b * f - c * e) / denom, 0.0, 1.0) : 0.0;
+                    t = b * s + f;
+                    if (t < 0.0) {
+                        t = 0.0;
+                        s = Math.Clamp(-c / a, 0.0, 1.0);
+                    } else if (t > e) {
+                        t = 1.0;
+                        s = Math.Clamp((b - c) / a, 0.0, 1.0);
+                    } else {
+                        t /= e;
+                    }
+                }
+            }
+            return Vector2D.Distance(p1 + d1 * s, p2 + d2 * t);
+        }
+
+        /// <summary>
+        /// Distance from a segment to an axis aligned rectangle: zero when they touch
+        /// or the segment is inside, otherwise the gap to the nearest edge. A capsule
+        /// touches the rect when this is at most its radius.
+        /// </summary>
+        public static double SegmentRectDistance(Vector2D a, Vector2D b, RectangleD rect) {
+            if (rect.Contains(a) || rect.Contains(b)) return 0.0;
+            Vector2D tl = new(rect.Left, rect.Top);
+            Vector2D tr = new(rect.Right, rect.Top);
+            Vector2D br = new(rect.Right, rect.Bottom);
+            Vector2D bl = new(rect.Left, rect.Bottom);
+            double d = SegmentSegmentDistance(a, b, tl, tr);
+            d = Math.Min(d, SegmentSegmentDistance(a, b, tr, br));
+            d = Math.Min(d, SegmentSegmentDistance(a, b, br, bl));
+            return Math.Min(d, SegmentSegmentDistance(a, b, bl, tl));
+        }
+    }
+
     /// <summary>
     /// Double precision axis aligned rectangle used for world space bounds.
     /// </summary>

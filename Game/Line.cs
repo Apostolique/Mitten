@@ -29,6 +29,9 @@ namespace GameProject {
         }
 
         public int Id { get; set; }
+        // The id of the first segment in the pen stroke this segment belongs to.
+        // Survives partial erasure: fragments of a stroke still select as one.
+        public int StrokeId { get; set; }
         public int Leaf { get; set; }
         public Frame Node { get; set; } = null!;
         public Vector2D A { get; set; }
@@ -37,6 +40,10 @@ namespace GameProject {
         public Color Color { get; set; }
 
         public RectangleD AABB { get; set; }
+
+        public void RecomputeAABB() {
+            AABB = ComputeAABB();
+        }
 
         private RectangleD ComputeAABB() {
             double left = Math.Min(A.X, B.X) - Radius;
