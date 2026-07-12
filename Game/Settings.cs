@@ -11,6 +11,11 @@ namespace GameProject {
         public bool IsFullscreen { get; set; } = false;
         public bool IsBorderless { get; set; } = false;
         public bool ShowMouse { get; set; } = true;
+        // Temporary mode (T): how long after pen-down a stroke's start lingers
+        // before the erase front sets off after it, and how fast the front moves
+        // relative to the speed the stroke was drawn.
+        public float TempDelaySeconds { get; set; } = 1f;
+        public float TempDecaySpeed { get; set; } = 1f;
     }
 
     [JsonSourceGenerationOptionsAttribute(

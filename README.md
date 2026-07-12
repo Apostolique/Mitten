@@ -19,6 +19,7 @@ Grab the builds <https://apos.itch.io/mitten>.
 * Alt + Hover to select a different color.
 * Control + Alt + Hover to select a different background color.
 * E to toggle the eraser.
+* T to toggle the temporary mode. Strokes aren't saved and erase themselves from their starting point shortly after pen-down, retracing the stroke at the speed it was drawn — the oldest ink disappears first. Useful for pointing at things during a presentation. The delay and decay speed can be tuned in Settings.json (`tempDelaySeconds`, `tempDecaySpeed`).
 
 ### Camera
 
@@ -40,6 +41,7 @@ Grab the builds <https://apos.itch.io/mitten>.
 * F11 for the borderless fullscreen mode.
 * Alt + Enter for the fullscreen mode.
 * M to show or hide the mouse cursor.
+* B to box select and edit strokes.
 
 ## Saved files
 

@@ -193,6 +193,9 @@ namespace GameProject {
                 if (_toggleSelect.Pressed()) {
                     SetTool(Tool.Select);
                 }
+                if (_toggleTemp.Pressed()) {
+                    _tempMode = !_tempMode;
+                }
 
                 if (_redo.Pressed()) {
                     Redo();
@@ -269,6 +272,8 @@ namespace GameProject {
             if (_loadCam0.Pressed()) {
                 LoadCam("0");
             }
+
+            UpdateTempStrokes();
 
             #if SDLWINDOWS || SDLLINUX
             if (!tabletProcessed && _tabletIsValid) {
@@ -354,6 +359,7 @@ namespace GameProject {
                 }
             }
             DrawSelectOverlay(moveDelta);
+            DrawTempStrokes();
             if (_isTabletDrawing) {
                 float pressure = _tabletPressure;
                 if (_line.Held()) {
@@ -373,12 +379,18 @@ namespace GameProject {
                         _sb.BorderCircle(thicknessView, _radius, TWColor.Black, 6f);
                         _sb.BorderCircle(thicknessView, _radius - 2f, TWColor.White, 2f);
                     }
+                    if (_tempMode) {
+                        _sb.BorderCircle(thicknessView, _radius + 6f, TempAccent, 2f);
+                    }
                 } else {
                     var mouseView = _camera.WorldToView(_mouseWorld);
                     _sb.FillCircle(mouseView, _radius * _tabletPressure, fgColor);
                     if (_tool == Tool.Erase) {
                         _sb.BorderCircle(mouseView, _radius * _tabletPressure, TWColor.Black, 6f);
                         _sb.BorderCircle(mouseView, (_radius - 2f) * _tabletPressure, TWColor.White, 2f);
+                    }
+                    if (_tempMode) {
+                        _sb.BorderCircle(mouseView, _radius * _tabletPressure + 6f, TempAccent, 2f);
                     }
                 }
             }
@@ -922,6 +934,7 @@ namespace GameProject {
             _moveCurrent = _moveCurrent / Frame.K + idx;
             _selBoundsMin = _selBoundsMin / Frame.K + idx;
             _selBoundsMax = _selBoundsMax / Frame.K + idx;
+            AscendTempStrokes(idx);
             ShiftExp(-Frame.LnK);
             _anchor = parent;
             _coverage.OnAscend(idx, AncestorAt(_anchor, MaxAncestorQuery));
@@ -951,6 +964,7 @@ namespace GameProject {
             _moveCurrent = (_moveCurrent - idx) * Frame.K;
             _selBoundsMin = (_selBoundsMin - idx) * Frame.K;
             _selBoundsMax = (_selBoundsMax - idx) * Frame.K;
+            DescendTempStrokes(idx);
             ShiftExp(Frame.LnK);
             _anchor = child;
             _coverage.OnDescend(idx);
@@ -1235,6 +1249,9 @@ namespace GameProject {
             }
             _selGesture = SelGesture.None;
             ClearSelection();
+            // Temp segments are in old-anchor units and short-lived: an instant hop
+            // to an arbitrary frame has no meaningful transform for them.
+            ClearTempStrokes();
             _anchor = cam.Node;
             _dragAnchor = cam.XY;
             _mouseWorld = cam.XY;
@@ -1288,6 +1305,10 @@ namespace GameProject {
         }
 
         private void CreateLine(Vector2D a, Vector2D b, double radius) {
+            if (_tempMode) {
+                CreateTempLine(a, b, radius);
+                return;
+            }
             // Erasing paints with the background color rather than deleting: it stays
             // exactly as accurate as the cursor, where segment deletion takes whole
             // segments in one go. True deletion lives on the Select tool instead, and
@@ -1302,6 +1323,7 @@ namespace GameProject {
             _hasPendingHistory = true;
         }
         private void CommitPending() {
+            CommitTempStroke();
             if (_hasPendingHistory) {
                 _undoOps.Push(new DrawOp { First = _group.First, Last = _group.Last });
                 _group = (_nextId, _nextId);
