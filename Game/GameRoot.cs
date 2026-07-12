@@ -19,7 +19,7 @@ using Apos.WintabDN;
 using System.Text.Json.Serialization.Metadata;
 
 // TODO:
-//       Add tablet pressure sensitivity.
+//       Add tablet pressure sensitivity on macOS. (Windows uses Wintab, Linux uses XInput2.)
 //       Rotation controls like Krita.
 
 namespace GameProject {
@@ -42,12 +42,13 @@ namespace GameProject {
 
             _settings.IsFullscreen = _settings.IsFullscreen || _settings.IsBorderless;
 
-            #if SDLWINDOWS
+            #if SDLWINDOWS || SDLLINUX
             SDL2.SDL.SDL_SysWMinfo systemInfo = new();
             SDL2.SDL.SDL_VERSION(out systemInfo.version);
             SDL2.SDL.SDL_GetWindowWMInfo(Window.Handle, ref systemInfo);
 
             try {
+                #if SDLWINDOWS
                 Console.WriteLine($"Device {CWintabInfo.GetDeviceInfo()}");
                 _logContext = CWintabInfo.GetDefaultSystemContext(ECTXOptionValues.CXO_MESSAGES);
                 _logContext.Open(systemInfo.info.win.window, true);
@@ -56,18 +57,14 @@ namespace GameProject {
                 if (_tabletIsValid) {
                     _data = new CWintabData(_logContext);
                 }
-
-                // while (true) {
-                //     uint count = 0;
-                //     WintabPacket[] results = _data.GetDataPackets(1, true, ref count);
-                //     for (int i = 0; i < count; i++) {
-                //         int x = results[i].pkX;
-                //         int y = results[i].pkY;
-                //         uint pressure = results[i].pkNormalPressure;
-
-                //         Console.WriteLine($"X: {x} -- Y: {y} ::: {pressure}");
-                //     }
-                // }
+                #else
+                if (systemInfo.subsystem == SDL2.SDL.SDL_SYSWM_TYPE.SDL_SYSWM_X11) {
+                    _xiTablet = new XInput2Tablet(systemInfo.info.x11.window);
+                    _tabletIsValid = _xiTablet.IsValid;
+                } else {
+                    Console.WriteLine($"Tablet: pressure requires X11 or XWayland (got {systemInfo.subsystem}). Try launching with SDL_VIDEODRIVER=x11.");
+                }
+                #endif
             } catch (Exception ex) {
                 Console.WriteLine($"Tablet Exception {ex}");
             }
@@ -111,6 +108,8 @@ namespace GameProject {
             if (_logContext is not null && _logContext.HCtx != 0) {
                 _logContext.Close();
             }
+            #elif SDLLINUX
+            _xiTablet?.Dispose();
             #endif
 
             SaveDrawing();
@@ -126,8 +125,12 @@ namespace GameProject {
         }
 
         protected override void Update(GameTime gameTime) {
-            #if SDLWINDOWS
+            #if SDLWINDOWS || SDLLINUX
             bool tabletProcessed = false;
+            #endif
+            #if SDLLINUX
+            // Pumps hotplug events so a tablet plugged in after startup starts working.
+            _tabletIsValid = _xiTablet is not null && _xiTablet.IsValid;
             #endif
 
             InputHelper.UpdateSetup();
@@ -168,7 +171,7 @@ namespace GameProject {
                     var diffX = (InputHelper.NewMouse.X - _thicknessStart.X) / 2f;
                     _radius = MathHelper.Clamp(_radiusStart + diffX, 0.5f, 1000f);
                 } else {
-                    #if SDLWINDOWS
+                    #if SDLWINDOWS || SDLLINUX
                     if (!_isMouseDrawing && _tabletIsValid) {
                         StrokeWithTablet(gameTime.TotalGameTime.TotalMilliseconds);
                         tabletProcessed = true;
@@ -262,7 +265,7 @@ namespace GameProject {
                 LoadCam("0");
             }
 
-            #if SDLWINDOWS
+            #if SDLWINDOWS || SDLLINUX
             if (!tabletProcessed && _tabletIsValid) {
                 UpdateTablet();
             }
@@ -364,15 +367,23 @@ namespace GameProject {
             base.Draw(gameTime);
         }
 
-        #if SDLWINDOWS
+        #if SDLWINDOWS || SDLLINUX
         private void UpdateTablet() {
+            #if SDLWINDOWS
             _data.FlushDataPackets(100);
+            #else
+            _xiTablet.Flush();
+            #endif
         }
 
         private void StrokeWithTablet(double totalTime) {
             bool ranOnce = false;
 
+            #if SDLWINDOWS
             using IEnumerator<(int, int, float)> t = new QueryTablet(_data);
+            #else
+            using IEnumerator<(int, int, float)> t = _xiTablet.GetPackets();
+            #endif
             bool isValid;
             do {
                 isValid = t.MoveNext();
@@ -389,8 +400,11 @@ namespace GameProject {
                     int y = t.Current.Item2;
                     _tabletPressure = t.Current.Item3;
 
+                    #if SDLWINDOWS
+                    // Wintab reports bottom-up screen coordinates; XInput2 packets are already window-relative.
                     y = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height - y - Window.ClientBounds.Y - 1;
                     x -= Window.ClientBounds.X;
+                    #endif
 
                     currentCursor = _camera.ScreenToWorld(x, y);
                     _lastTablet = currentCursor;
@@ -1836,6 +1850,10 @@ namespace GameProject {
         #if SDLWINDOWS
         CWintabContext _logContext = null!;
         CWintabData _data = null!;
+        #elif SDLLINUX
+        XInput2Tablet _xiTablet = null!;
+        #endif
+        #if SDLWINDOWS || SDLLINUX
         bool _tabletIsValid = false;
         Vector2D _lastTablet = Vector2D.Zero;
         float _lastPressure = 0f;

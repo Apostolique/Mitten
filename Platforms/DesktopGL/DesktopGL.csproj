@@ -17,10 +17,15 @@
     <BeautyExcludes>SDL2*;libSDL2*;sdl2*;soft_oal*;openal*;MonoGame.Framework*</BeautyExcludes>
 
     <IsWindows Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true' And '$(_IsPublishing)' != 'true'">true</IsWindows>
+    <IsLinux Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true' And '$(_IsPublishing)' != 'true'">true</IsLinux>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' Or '$(IsWindows)'=='true'">
     <DefineConstants>$(DefineConstants);SDLWINDOWS</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="('$(RuntimeIdentifier)' == 'linux-x64' And '$(IsWindows)'!='true') Or '$(IsLinux)'=='true'">
+    <DefineConstants>$(DefineConstants);SDLLINUX</DefineConstants>
   </PropertyGroup>
 
   <Target Name="DisplayMessages" BeforeTargets="AfterBuild">
