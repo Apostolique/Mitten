@@ -322,7 +322,12 @@ namespace GameProject {
                 GraphicsDevice.Viewport.Width * (float)GraphicsDevice.Viewport.Width +
                 GraphicsDevice.Viewport.Height * (float)GraphicsDevice.Viewport.Height) + 2f;
             int fullCoverId = _coverage.Collect(_drawables, _camera.XY, _camera.Scale, _screenRadius);
+            _emitFullCoverId = -1;
             CollectVisible();
+            // Tree-queried strokes can cover the screen too (ink zoomed into from
+            // inside stacks up fast near a deep cell corner); fold them into the
+            // occlusion cutoff so everything underneath skips the fill.
+            if (_emitFullCoverId > fullCoverId) fullCoverId = _emitFullCoverId;
             _drawables.Sort(static (x, y) => x.Id.CompareTo(y.Id));
             // A selection drag previews in view space: the trees are only touched on
             // release, when the whole gesture commits as one MoveOp/ScaleOp.
@@ -685,13 +690,19 @@ namespace GameProject {
         // transformed exactly, so they stay put. One level up the per-frame error is
         // ~2^(16-37) * scale px (always subpixel in band); two levels up it is not.
         private const int MaxAncestorQuery = 1;
-        // Sibling branches have no coverage entries, so their frames' trees are still
-        // queried up to this height. At height 2 the error is bounded by the strokes'
-        // own coordinate precision (~2^-36 of a cell), the best any path can do.
-        private const int MaxQueryHeight = 2;
-        // How many ancestor levels the collection walk visits. Strokes reach at most
-        // one parent cell beyond their frame's cell (NormalizeAnchor), so content from
-        // sibling branches up to 3 levels above can still overhang into the view.
+        // Sibling and cousin branches have no coverage entries, so their frames'
+        // trees are queried at whatever height the walk reaches them. Up to two
+        // levels up the emitted geometry is precise (error bounded by the strokes'
+        // own ~2^-36-of-a-cell coordinate precision, the best any path can do);
+        // higher than that every visible stroke projects past BigRadiusPx and
+        // EmitLine reduces it to a full cover or a screen-local edge — exact and
+        // stable in the interior, drifting on the edge the same accepted way
+        // coverage entries do — so no height cap is needed.
+        // How many ancestor levels the collection walk visits at minimum. Strokes
+        // reach at most one parent cell beyond their frame's cell (NormalizeAnchor),
+        // so content from sibling branches up to 3 levels above can still overhang
+        // into the view. Near a nested cell corner the walk keeps climbing past this
+        // until the view sits clear of every span boundary (see DeepInside).
         private const int MaxWalkHeight = 3;
         // Above this radius in pixels a stroke renders as a screen-local edge or full
         // cover: float vertices cannot place the edge of a larger capsule precisely.
@@ -712,12 +723,15 @@ namespace GameProject {
 
             Frame f = _anchor;
             Frame? skip = null;
+            _walkUp.Clear();
             for (int height = 0; ; height++) {
                 CollectFrame(f, ix, iy, fx, fy, ppu, height, skip, height <= MaxAncestorQuery);
-                if (height >= MaxWalkHeight || f.Parent == null) break;
+                if (f.Parent == null) break;
+                if (height >= MaxWalkHeight && DeepInside(_camera.ViewRectIn(new Vector2D(ix + fx, iy + fy), ppu))) break;
 
                 (long qx, long rx) = FloorDivMod(ix, Frame.CellCount);
                 (long qy, long ry) = FloorDivMod(iy, Frame.CellCount);
+                _walkUp.Add((rx, ry, fx, fy));
                 fx = (rx + fx) / Frame.K;
                 fy = (ry + fy) / Frame.K;
                 ix = qx + f.Index.X;
@@ -728,10 +742,42 @@ namespace GameProject {
             }
         }
 
+        // True when the rect sits a couple of cells clear of the frame's span
+        // boundary: content in branches that diverge higher up stays within a cell
+        // of its own span, so nothing above can reach the rect and the walk can
+        // stop. Zooming in place exhausts the camera's mantissa and lands it
+        // exactly on a nested cell corner; the view then hugs a span boundary at
+        // every level below the corner's own, and the walk keeps climbing to it so
+        // ink drawn across the corner (anchored in branches diverging there) is
+        // still found.
+        private static bool DeepInside(RectangleD r) {
+            return r.X >= 2.0 && r.Y >= 2.0 && r.Right < Frame.K - 2.0 && r.Bottom < Frame.K - 2.0;
+        }
+
         private static (long Q, long R) FloorDivMod(long v, long k) {
             long q = Math.DivRem(v, k, out long r);
             if (r < 0) { q--; r += k; }
             return (q, r);
+        }
+
+        /// <summary>
+        /// The camera's sub-cell digits for descending one level from a frame at the
+        /// given walk height. Levels the walk ascended through read the ledger
+        /// recorded on the way up, so descending back into a sibling or cousin
+        /// branch reuses the exact digits no matter how high the walk went — deriving
+        /// them from fx again would amplify its ascent rounding by K per level.
+        /// Below the anchor the digits come straight off the fraction's bits, an
+        /// exact shift.
+        /// </summary>
+        private (long Wx, long Wy, double Fx, double Fy) SplitCam(double fx, double fy, int height) {
+            if (height >= 1 && height <= _walkUp.Count) {
+                return _walkUp[height - 1];
+            }
+            double sx = fx * Frame.K;
+            double sy = fy * Frame.K;
+            long wx = (long)sx;
+            long wy = (long)sy;
+            return (wx, wy, sx - wx, sy - wy);
         }
 
         private void CollectFrame(Frame f, long ix, long iy, double fx, double fy, double ppu, int height, Frame? skip, bool ownTree) {
@@ -741,7 +787,7 @@ namespace GameProject {
             RectangleD view = _camera.ViewRectIn(cam, ppu);
             // Strokes anchored here are at most one cell (K units) across: below half
             // a pixel none of them can be visible.
-            if (ownTree && height <= MaxQueryHeight && f.Tree.Count > 0 && ppu * Frame.K >= 0.5) {
+            if (ownTree && f.Tree.Count > 0 && ppu * Frame.K >= 0.5) {
                 foreach (Line l in f.Tree.Query(view)) {
                     EmitLine(l, ix, iy, fx, fy, ppu);
                 }
@@ -762,14 +808,11 @@ namespace GameProject {
                 var cell = new RectangleD(child.Index.X, child.Index.Y, 1.0, 1.0);
                 if (!cell.Intersects(near)) continue;
                 if (recurse) {
-                    double sx = fx * Frame.K;
-                    double sy = fy * Frame.K;
-                    long wx = (long)sx;
-                    long wy = (long)sy;
+                    var (wx, wy, sx, sy) = SplitCam(fx, fy, height);
                     CollectFrame(child,
                         (ix - child.Index.X) * Frame.CellCount + wx,
                         (iy - child.Index.Y) * Frame.CellCount + wy,
-                        sx - wx, sy - wy,
+                        sx, sy,
                         ppu / Frame.K, height - 1, null, true);
                 } else if (child.SubtreeCount > 0 && child.SubtreeColor != null && child.SubtreeBounds is RectangleD b) {
                     // Impostor: the subtree's bounds in this frame's units, as a dot.
@@ -812,11 +855,13 @@ namespace GameProject {
                 double edge = radius - dist;   // camera is inside by this many pixels
                 if (dist < 1e-9 || edge > fill) {
                     _drawables.Add(new Drawable(l.Id, Vector2.Zero, Vector2.Zero, (float)fill, l.Color));
+                    if (l.Id > _emitFullCoverId) _emitFullCoverId = l.Id;
                 } else if (edge > -fill) {
                     Vector2 n = new((float)(-cx / dist), (float)(-cy / dist));
                     Vector2 tangent = new(-n.Y, n.X);
                     Vector2 center = n * (float)(edge - fill);
                     _drawables.Add(new Drawable(l.Id, center - tangent * (float)(fill * 2.0), center + tangent * (float)(fill * 2.0), (float)fill, l.Color));
+                    if (edge >= _screenRadius && l.Id > _emitFullCoverId) _emitFullCoverId = l.Id;
                 }
                 return;
             }
@@ -842,6 +887,16 @@ namespace GameProject {
             }
 
             _drawables.Add(new Drawable(l.Id, new Vector2((float)ax, (float)ay), new Vector2((float)bx, (float)by), (float)radius, l.Color));
+
+            // The capsule occludes the whole screen when the origin sits deeper
+            // inside it than the screen radius.
+            double tdx = bx - ax, tdy = by - ay;
+            double td2 = tdx * tdx + tdy * tdy;
+            double tt = td2 > 0.0 ? Math.Clamp(-(ax * tdx + ay * tdy) / td2, 0.0, 1.0) : 0.0;
+            double ex = ax + tdx * tt, ey = ay + tdy * tt;
+            if (radius - Math.Sqrt(ex * ex + ey * ey) >= _screenRadius && l.Id > _emitFullCoverId) {
+                _emitFullCoverId = l.Id;
+            }
         }
 
         /// <summary>
@@ -866,12 +921,15 @@ namespace GameProject {
 
             Frame f = _anchor;
             Frame? skip = null;
+            _walkUp.Clear();
             for (int height = 0; ; height++) {
                 HitTestFrame(f, ix, iy, fx, fy, ppu, px, py, pw, ph, height, skip, height <= MaxAncestorQuery, visit);
-                if (height >= MaxWalkHeight || f.Parent == null) break;
+                if (f.Parent == null) break;
+                if (height >= MaxWalkHeight && DeepInside(new RectangleD(ix + fx + px, iy + fy + py, pw, ph))) break;
 
                 (long qx, long rx) = FloorDivMod(ix, Frame.CellCount);
                 (long qy, long ry) = FloorDivMod(iy, Frame.CellCount);
+                _walkUp.Add((rx, ry, fx, fy));
                 fx = (rx + fx) / Frame.K;
                 fy = (ry + fy) / Frame.K;
                 ix = qx + f.Index.X;
@@ -888,7 +946,7 @@ namespace GameProject {
 
         private void HitTestFrame(Frame f, long ix, long iy, double fx, double fy, double ppu, double px, double py, double pw, double ph, int height, Frame? skip, bool ownTree, Action<Line, Vector2D, Vector2D, double> visit) {
             RectangleD probe = new(ix + fx + px, iy + fy + py, pw, ph);
-            if (ownTree && height <= MaxQueryHeight && f.Tree.Count > 0 && ppu * Frame.K >= 0.5) {
+            if (ownTree && f.Tree.Count > 0 && ppu * Frame.K >= 0.5) {
                 foreach (Line l in f.Tree.Query(probe)) {
                     Vector2D a = new(((l.A.X - ix) - fx) * ppu, ((l.A.Y - iy) - fy) * ppu);
                     Vector2D b = new(((l.B.X - ix) - fx) * ppu, ((l.B.Y - iy) - fy) * ppu);
@@ -907,14 +965,11 @@ namespace GameProject {
                 var cell = new RectangleD(child.Index.X, child.Index.Y, 1.0, 1.0);
                 if (!cell.Intersects(near)) continue;
                 if (recurse) {
-                    double sx = fx * Frame.K;
-                    double sy = fy * Frame.K;
-                    long wx = (long)sx;
-                    long wy = (long)sy;
+                    var (wx, wy, sx, sy) = SplitCam(fx, fy, height);
                     HitTestFrame(child,
                         (ix - child.Index.X) * Frame.CellCount + wx,
                         (iy - child.Index.Y) * Frame.CellCount + wy,
-                        sx - wx, sy - wy,
+                        sx, sy,
                         ppu / Frame.K,
                         px * Frame.K, py * Frame.K, pw * Frame.K, ph * Frame.K,
                         height - 1, null, true, visit);
@@ -1037,26 +1092,45 @@ namespace GameProject {
             }
 
             Vector2D center = (a + b) / 2.0;
-            int up = 0;
-            while (center.X < 0.0 || center.X >= Frame.K || center.Y < 0.0 || center.Y >= Frame.K) {
-                Frame parent = f.EnsureParent();
-                Vector2D idx = f.IndexOffset;
-                a = a / Frame.K + idx;
-                b = b / Frame.K + idx;
-                center = (a + b) / 2.0;
-                radius /= Frame.K;
-                f = parent;
-                up++;
+            long cx = (long)Math.Floor(center.X);
+            long cy = (long)Math.Floor(center.Y);
+            if (cx >= 0 && cx < Frame.CellCount && cy >= 0 && cy < Frame.CellCount) {
+                return (f, a, b, radius);
             }
-            while (up-- > 0) {
-                var index = ((long)Math.Floor(center.X), (long)Math.Floor(center.Y));
-                Frame child = f.GetOrCreateChild(index);
-                Vector2D idx = new(index.Item1, index.Item2);
-                a = (a - idx) * Frame.K;
-                b = (b - idx) * Frame.K;
-                center = (a + b) / 2.0;
-                radius *= Frame.K;
-                f = child;
+
+            // Re-home to the frame at this level whose span contains the center.
+            // Same-level frames tile space with period K, so that frame's origin sits
+            // exactly K * (qx, qy) away and the coordinates shift in one exact step.
+            // (Walking a and b up the tree and back in doubles instead absorbed their
+            // sub-cell bits into the ancestors' cell indices — at high zoom that
+            // snapped strokes drawn across nested cell corners onto a coarse grid or
+            // collapsed them onto the corner itself.)
+            (long qx, _) = FloorDivMod(cx, Frame.CellCount);
+            (long qy, _) = FloorDivMod(cy, Frame.CellCount);
+            Vector2D shift = new(qx * Frame.K, qy * Frame.K);
+            a -= shift;
+            b -= shift;
+
+            // Find that frame with exact integer cell arithmetic: carry the center's
+            // cell up until an ancestor's span contains it, then descend along the
+            // remainders.
+            _rehomePath.Clear();
+            Frame above = f.EnsureParent();
+            long cellX = f.Index.X + qx;
+            long cellY = f.Index.Y + qy;
+            f = above;
+            while (cellX < 0 || cellX >= Frame.CellCount || cellY < 0 || cellY >= Frame.CellCount) {
+                (long ux, long rx) = FloorDivMod(cellX, Frame.CellCount);
+                (long uy, long ry) = FloorDivMod(cellY, Frame.CellCount);
+                _rehomePath.Add((rx, ry));
+                above = f.EnsureParent();
+                cellX = f.Index.X + ux;
+                cellY = f.Index.Y + uy;
+                f = above;
+            }
+            f = f.GetOrCreateChild((cellX, cellY));
+            for (int i = _rehomePath.Count - 1; i >= 0; i--) {
+                f = f.GetOrCreateChild(_rehomePath[i]);
             }
 
             return (f, a, b, radius);
@@ -2433,6 +2507,12 @@ namespace GameProject {
 
         Vector2D _mouseWorld;
         Vector2D _dragAnchor = Vector2D.Zero;
+        // Scratch: NormalizeAnchor's descent path, and the collect/hit-test walks'
+        // per-level camera digit ledger (see SplitCam).
+        readonly List<(long X, long Y)> _rehomePath = [];
+        readonly List<(long Rx, long Ry, double Fx, double Fy)> _walkUp = [];
+        // Highest id EmitLine saw whose drawable covers the whole screen this frame.
+        int _emitFullCoverId = -1;
         double _targetExp = 0.0;
         readonly double _expDistance = 0.002;
         // Sidebar range: the current frame's zoom band (zoom itself is unbounded).

@@ -6,7 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-- Nothing yet!
+### Fixed
+
+- Drawing near a nested cell corner at high zoom (reached by zooming in place) no longer snaps strokes to a grid or collapses them onto the corner: strokes are now re-homed to their frame with exact integer cell arithmetic, and rendering and hit testing follow ink across the corner no matter how deep it is.
+- Zooming deep inside existing ink no longer tanks the frame rate: strokes that cover the whole screen now join the occlusion cutoff, so everything underneath them skips its fill instead of stacking hundreds of full-screen quads.
+- Strokes anchored across a deep cell corner no longer pop out a few zoom levels in: the tree-query height cap is gone, since past two levels every visible stroke reduces to a full cover or screen-local edge anyway, which is stable at any depth.
 
 ## [3.1.1] - 2026-07-12
 
