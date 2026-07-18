@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+- Nothing yet!
+
+## [3.1.2] - 2026-07-18
+
 ### Fixed
 
 - Drawing near a nested cell corner at high zoom (reached by zooming in place) no longer snaps strokes to a grid or collapses them onto the corner: strokes are now re-homed to their frame with exact integer cell arithmetic, and rendering and hit testing follow ink across the corner no matter how deep it is.
@@ -359,7 +363,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Undo and redo (disabled while drawing).
 - Saving drawings to disk.
 
-[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.1.1...HEAD
+[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.1.2...HEAD
+[3.1.2]: https://github.com/Apostolique/Mitten/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/Apostolique/Mitten/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/Apostolique/Mitten/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/Apostolique/Mitten/compare/v3.0.0...v3.0.1
