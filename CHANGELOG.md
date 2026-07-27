@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+- Nothing yet!
+
+## [3.2.0] - 2026-07-26
+
 ### Changed
 
 - Strokes now render as one continuous path instead of a capsule per segment, so joints blend once instead of stacking. F3 toggles back to per-segment capsules.
@@ -372,7 +376,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Undo and redo (disabled while drawing).
 - Saving drawings to disk.
 
-[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.1.2...HEAD
+[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/Apostolique/Mitten/compare/v3.1.2...v3.2.0
 [3.1.2]: https://github.com/Apostolique/Mitten/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/Apostolique/Mitten/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/Apostolique/Mitten/compare/v3.0.1...v3.1.0
