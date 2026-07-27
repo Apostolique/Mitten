@@ -112,13 +112,10 @@ namespace GameProject {
                     Vector2 av = _camera.WorldToView(a);
                     Vector2 bv = _camera.WorldToView(seg.B);
                     float r = (float)(seg.Radius * _camera.Scale);
-                    if (av == bv) {
-                        _sb.FillCircle(av, r, c);
-                    } else {
-                        _sb.FillLine(av, bv, r, c);
-                    }
+                    StrokeSegment(av, bv, r, c);
                 }
             }
+            EndStroke();
         }
 
         // Temp segments are in current anchor units like every other world-space

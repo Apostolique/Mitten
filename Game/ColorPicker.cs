@@ -3,11 +3,10 @@ using Apos.Input;
 using Apos.Shapes;
 using FontStashSharp;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 
 namespace GameProject {
-    public class ColorPicker(GraphicsDevice g, ContentManager c) {
+    public class ColorPicker(GraphicsDevice g) {
         public Color[][] Colors = null!;
 
         public Color UpdateInput() {
@@ -53,6 +52,6 @@ namespace GameProject {
         }
 
         SpriteBatch _s = new(g);
-        ShapeBatch _sb = new(g, c);
+        ShapeBatch _sb = new(g);
     }
 }

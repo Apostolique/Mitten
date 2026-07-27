@@ -1,4 +1,4 @@
-﻿using Apos.Input;
+using Apos.Input;
 using Track = Apos.Input.Track;
 using Apos.Shapes;
 using Apos.Tweens;
@@ -80,7 +80,12 @@ namespace GameProject {
 
         protected override void LoadContent() {
             _s = new SpriteBatch(GraphicsDevice);
-            _sb = new ShapeBatch(GraphicsDevice, Content);
+            _sb = new ShapeBatch(GraphicsDevice) {
+                // Every shape here is a solid color, so there is nothing to interpolate
+                // and all three spaces pack the same bits. Rgb reaches them through a
+                // table lookup where Oklab has to hash the color and read its cache.
+                ColorSpace = ColorSpace.Rgb
+            };
 
             // TODO: use this.Content to load your game content here
             InputHelper.Setup(this);
@@ -98,7 +103,7 @@ namespace GameProject {
 
             _camera = new CameraD(GraphicsDevice);
 
-            _cp = new ColorPicker(GraphicsDevice, Content);
+            _cp = new ColorPicker(GraphicsDevice);
             LoadPalette();
 
             LoadDrawing();
@@ -141,6 +146,7 @@ namespace GameProject {
                 Exit();
 
             if (_toggleDebug.Pressed()) _showDebug = !_showDebug;
+            if (_togglePaths.Pressed()) _usePaths = !_usePaths;
             if (_toggleMouse.Pressed()) {
                 _settings.ShowMouse = !_settings.ShowMouse;
                 IsMouseVisible = _settings.ShowMouse;
@@ -311,6 +317,7 @@ namespace GameProject {
             GraphicsDevice.Clear(_bgColor);
 
             _sb.Begin(_camera.View);
+            _pathCount = 0;
 
             var fgColor = _color;
             if (_tool == Tool.Erase) {
@@ -355,13 +362,10 @@ namespace GameProject {
                         r *= scaleF;
                     }
                 }
-                if (a == b) {
-                    _sb.FillCircle(a, r, c);
-                } else {
-                    _sb.FillLine(a, b, r, c);
-                }
+                StrokeSegment(a, b, r, c);
                 inView++;
             }
+            EndStroke();
             // Accents draw after every fill so stroke joints don't overpaint them.
             if (_selectedIds.Count > 0) {
                 foreach (var d in _drawables) {
@@ -377,12 +381,9 @@ namespace GameProject {
                         b = scaleC + (b - scaleC) * scaleF;
                         r *= scaleF;
                     }
-                    if (a == b) {
-                        _sb.FillCircle(a, MathF.Max(1f, r * 0.35f), SelectAccent);
-                    } else {
-                        _sb.FillLine(a, b, MathF.Max(1f, r * 0.35f), SelectAccent);
-                    }
+                    StrokeSegment(a, b, MathF.Max(1f, r * 0.35f), SelectAccent);
                 }
+                EndStroke();
             }
             DrawSelectOverlay(moveDelta);
             DrawTempStrokes();
@@ -458,6 +459,7 @@ namespace GameProject {
                 _s.Begin();
                 _s.DrawString(font, $"fps: {_fps.FramesPerSecond} - Dropped Frames: {_fps.DroppedFrames} - Draw ms: {_fps.TimePerFrame} - Update ms: {_fps.TimePerUpdate}", new Vector2(10, 10), TWColor.White);
                 _s.DrawString(font, $"In view: {inView} -- Total: {_lines.Count} -- {_camera.ScreenToWorldScale()}", new Vector2(10, GraphicsDevice.Viewport.Height - 24), TWColor.White);
+                _s.DrawString(font, _usePaths ? $"Paths: {_pathCount}" : "Paths: off", new Vector2(10, 34), TWColor.White);
                 _s.DrawString(font, $"Level: {_anchor.Level} -- Cell: ({_anchor.Index.X}, {_anchor.Index.Y}) -- Coverage: {_coverage.Count}", new Vector2(10, GraphicsDevice.Viewport.Height - 48), TWColor.White);
                 _s.End();
             }
@@ -707,6 +709,66 @@ namespace GameProject {
         // Above this radius in pixels a stroke renders as a screen-local edge or full
         // cover: float vertices cannot place the edge of a larger capsule precisely.
         private const double BigRadiusPx = 1e6;
+
+        /// <summary>
+        /// Draws one segment, chaining it onto the open path when it continues the
+        /// previous one in the same color. Consecutive segments of a stroke share an
+        /// endpoint exactly (both sides come out of the same frame transform), so a whole
+        /// stroke streams into one path: the ink blends once across a joint instead of
+        /// stacking two capsules, which is what a translucent color needs, and the joint
+        /// quads are cut to the bisector so a thick stroke stops paying fill rate for the
+        /// overlap. A point can carry its own radius, so a pressure-varying stroke stays
+        /// one path instead of breaking at every segment. Anything that breaks the chain —
+        /// a gap, a color change, an impostor dot — ends the path and starts a new one.
+        /// </summary>
+        private void StrokeSegment(Vector2 a, Vector2 b, float radius, Color c) {
+            if (!_usePaths) {
+                if (a == b) {
+                    _sb.FillCircle(a, radius, c);
+                } else {
+                    _sb.FillLine(a, b, radius, c);
+                }
+                return;
+            }
+            if (a == b) {
+                EndStroke();
+                _sb.FillCircle(a, radius, c);
+                _pathCount++;
+                return;
+            }
+            if (_pathOpen && a == _pathEnd && c == _pathColor) {
+                // Only a point that leaves the radius the path opened with has to carry
+                // one. Carrying one is what moves the path onto the tapered geometry, so
+                // a pen reporting no pressure would otherwise pay for the taper on every
+                // stroke and have the library scan the radii back off again.
+                if (radius == _pathRadius) {
+                    _sb.PathTo(b);
+                } else {
+                    _sb.PathTo(b, radius);
+                }
+            } else {
+                EndStroke();
+                _sb.BeginFillPath(radius, c);
+                _sb.PathTo(a);
+                _sb.PathTo(b);
+                _pathOpen = true;
+                _pathColor = c;
+                _pathRadius = radius;
+                _pathCount++;
+            }
+            _pathEnd = b;
+        }
+
+        /// <summary>
+        /// Emits the open path, if any. Must run before anything else draws: the path's
+        /// geometry only reaches the batch here, so leaving it open would paint it over
+        /// whatever was queued in the meantime.
+        /// </summary>
+        private void EndStroke() {
+            if (!_pathOpen) return;
+            _pathOpen = false;
+            _sb.EndPath();
+        }
 
         private void CollectVisible() {
             // The camera is carried as exact integer cell offsets plus fractions in
@@ -2076,7 +2138,29 @@ namespace GameProject {
             _cp.Colors = colors;
         }
 
-        public static string GetPath(string name) => Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, name);
+        static readonly string _savePath = FindSavePath();
+        public static string GetPath(string name) => Path.Combine(_savePath, name);
+        // On macOS the executable lives inside Mitten.app, and an updater is free to
+        // replace a bundle wholesale, so drawings go to the usual per-user directory
+        // instead. Everywhere else they stay next to the executable.
+        private static string FindSavePath() {
+            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory!;
+
+            if (!OperatingSystem.IsMacOS()) return baseDirectory;
+
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (string.IsNullOrEmpty(home)) return baseDirectory;
+
+            string path = Path.Combine(home, "Library", "Application Support", "Mitten");
+            try {
+                Directory.CreateDirectory(path);
+            } catch (Exception) {
+                // Losing the drawing beats failing to start, so fall back to the bundle.
+                return baseDirectory;
+            }
+
+            return path;
+        }
         public static void SaveJson<T>(string name, T json, JsonTypeInfo<T> typeInfo) {
             string jsonPath = GetPath(name);
             string jsonString = JsonSerializer.Serialize(json, typeInfo);
@@ -2296,6 +2380,7 @@ namespace GameProject {
 
         ICondition _toggleDebug = new KeyboardCondition(Keys.F1);
         ICondition _resetFPS = new KeyboardCondition(Keys.F2);
+        ICondition _togglePaths = new KeyboardCondition(Keys.F3);
         ICondition _toggleMouse = new KeyboardCondition(Keys.M);
 
         ICondition _undo =
@@ -2531,6 +2616,14 @@ namespace GameProject {
         readonly double _hyperZoomExp = 4.0;
 
         bool _showDebug = false;
+        // Strokes render as continuous paths; F3 falls back to a capsule per segment
+        // for comparing the two.
+        bool _usePaths = true;
+        bool _pathOpen = false;
+        Vector2 _pathEnd;
+        Color _pathColor;
+        float _pathRadius;
+        int _pathCount = 0;
 
         static readonly FloatTween _zoomSidebarStart = new(0f, 0.2f, 1000, Easing.QuintOut);
         static readonly ITween<float> _zoomSidebarWait = _zoomSidebarStart.Wait(1000);

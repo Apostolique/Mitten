@@ -6,7 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-- Nothing yet!
+### Changed
+
+- Strokes now render as one continuous path instead of a capsule per segment, so joints blend once instead of stacking. F3 toggles back to per-segment capsules.
+- Pen pressure now varies a stroke's width smoothly between samples instead of stepping at every segment.
+- Updated to Apos.Shapes 0.7.11.
+
+### Fixed
+
+- macOS builds now open on current macOS. They ship as a `Mitten.app` bundle, native on both Apple Silicon and Intel, and render at full resolution on Retina displays.
+- On macOS, drawings and settings are saved to `~/Library/Application Support/Mitten` so updating the app can't take them along.
 
 ## [3.1.2] - 2026-07-18
 

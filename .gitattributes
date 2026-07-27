@@ -1,0 +1,9 @@
+# package-osx.sh runs on a macOS runner. A CRLF would land in the shebang and
+# the only symptom is "bad interpreter", so pin the ending regardless of how a
+# contributor has core.autocrlf set.
+*.sh text eol=lf
+
+*.icns binary
+*.ico binary
+*.bmp binary
+*.png binary

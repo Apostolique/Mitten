@@ -47,7 +47,9 @@ Grab the builds <https://apos.itch.io/mitten>.
 
 ## Saved files
 
-Saved next to the application's executable.
+Saved next to the application's executable. On macOS they go to
+`~/Library/Application Support/Mitten` instead, since the executable lives inside
+`Mitten.app` and updating the app would take the bundle's contents with it.
 
 * Drawing.json - Your whole canvas is saved there including undo redo and camera position.
 * Settings.json - Window settings are saved here. Includes if the app should start in fullscreen, vsync and fixed timestep.
@@ -74,10 +76,23 @@ In vscode, you can debug by pressing F5.
 
 ```
 dotnet publish Platforms/DesktopGL -c Release -r win-x64 --output artifacts/windows
-dotnet publish Platforms/DesktopGL -c Release -r osx-x64 --output artifacts/osx
 dotnet publish Platforms/DesktopGL -c Release -r linux-x64 --output artifacts/linux
 ```
 
 ```
 dotnet publish Platforms/WindowsDX -c Release -r win-x64 --output artifacts/windowsdx
 ```
+
+macOS goes through a script, since the build has to end up inside a `.app` bundle:
+
+```
+./Platforms/DesktopGL/package-osx.sh 3.1.2 artifacts/osx
+```
+
+It publishes `osx-arm64` and `osx-x64`, puts both in `Mitten.app` next to a launcher that
+picks one at startup, and ad-hoc signs every binary. You need a Mac to run it. `codesign`
+only exists there, and Apple Silicon kills unsigned binaries the moment they launch.
+
+The app isn't notarized. Downloaded from a browser, macOS calls it damaged the first time.
+You can open System Settings > Privacy & Security and click "Open Anyway". Through the itch
+app it just runs.
