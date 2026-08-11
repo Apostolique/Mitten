@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+- Nothing yet!
+
+## [3.4.0] - 2026-08-10
+
+### Added
+
+- Touch support. One finger draws, two fingers zoom and pan together.
+
 ### Fixed
 
 - In the browser, the page no longer takes the shortcuts the game uses. Alt opens the color picker instead of jumping to the browser's own menu.
@@ -392,7 +400,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Undo and redo (disabled while drawing).
 - Saving drawings to disk.
 
-[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.3.0...HEAD
+[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.4.0...HEAD
+[3.4.0]: https://github.com/Apostolique/Mitten/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/Apostolique/Mitten/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/Apostolique/Mitten/compare/v3.1.2...v3.2.0
 [3.1.2]: https://github.com/Apostolique/Mitten/compare/v3.1.1...v3.1.2

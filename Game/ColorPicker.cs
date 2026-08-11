@@ -47,9 +47,9 @@ namespace GameProject {
 
         private (int, int) MouseToColor(Vector2 view) {
             var width = (int)view.X / Colors.Length;
-            int x = MathHelper.Clamp(InputHelper.NewMouse.X / width, 0, Colors.Length - 1);
+            int x = MathHelper.Clamp((int)Pointer.Position.X / width, 0, Colors.Length - 1);
             var height = (int)view.Y / Colors[x].Length;
-            int y = MathHelper.Clamp(InputHelper.NewMouse.Y / height, 0, Colors[x].Length - 1);
+            int y = MathHelper.Clamp((int)Pointer.Position.Y / height, 0, Colors[x].Length - 1);
 
             return (x, y);
         }

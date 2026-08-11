@@ -11,6 +11,7 @@ using Apos.Tweens;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Microsoft.Xna.Framework.Input.Touch;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -237,9 +238,9 @@ namespace GameProject {
                 } else if (!_isMouseDrawing && _thickness.Held()) {
                     if (_thickness.Pressed()) {
                         _radiusStart = _radius;
-                        _thicknessStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                        _thicknessStart = Pointer.Position;
                     }
-                    var diffX = (InputHelper.NewMouse.X - _thicknessStart.X) / 2f;
+                    var diffX = (Pointer.Position.X - _thicknessStart.X) / 2f;
                     _radius = MathHelper.Clamp(_radiusStart + diffX, 0.5f, 1000f);
                 } else {
                     #if TABLET
@@ -249,7 +250,9 @@ namespace GameProject {
                     }
                     #endif
 
-                    if (!_isTabletDrawing) {
+                    // The two fingers of a pinch are contacts like any other, so the stroke
+                    // has to stand down for as long as the gesture owns them.
+                    if (!_isTabletDrawing && !_pinching) {
                         StrokeWithMouse();
                     }
                 }
@@ -458,8 +461,11 @@ namespace GameProject {
             if (_isMouseDrawing) {
                 _sb.FillLine(_camera.WorldToView(_start), _camera.WorldToView(_end), _radius, fgColor);
             }
-            // The Select tool has no brush: the OS cursor is the pointer.
-            if (_tool != Tool.Select) {
+            // The Select tool has no brush: the OS cursor is the pointer. Touch has no hover
+            // either, and the pointer stays wherever the last contact lifted, so the brush only
+            // follows a mouse or a finger that is actually drawing.
+            if (_tool != Tool.Select &&
+                (Pointer.Source == PointerSource.Mouse || _isMouseDrawing || _isTabletDrawing)) {
                 if (_thickness.Held()) {
                     var thicknessView = _camera.WorldToView(_camera.ScreenToWorld(_thicknessStart));
                     _sb.FillCircle(thicknessView, _radius, fgColor);
@@ -645,6 +651,10 @@ namespace GameProject {
         }
 
         private void UpdateCamera() {
+            // Before anything one fingered, so the claim wins and a stroke doesn't start
+            // underneath the gesture.
+            bool pinching = UpdatePinch();
+
             if (_hyperZoom.Pressed()) {
                 _preservedExp = _targetExp;
                 SetExpTween(_preservedExp + _hyperZoomExp);
@@ -655,20 +665,20 @@ namespace GameProject {
                 ShowZoomSidebar();
             } else if (_hyperZoom.Released()) {
                 SetExpTween(_preservedExp);
-            } else {
+            } else if (!pinching) {
                 if (_dragZoom.Held()) {
                     if (_dragZoom.Pressed()) {
                         _expStart = _targetExp;
-                        _zoomStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
-                        _dragAnchor = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
-                        _pinCamera = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                        _zoomStart = Pointer.Position;
+                        _dragAnchor = _camera.ScreenToWorld(Pointer.Position);
+                        _pinCamera = Pointer.Position;
                         _rePinZoom = false;
                     } else if (_rePinZoom) {
                         _expStart = _targetExp;
-                        _zoomStart = new Vector2(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                        _zoomStart = Pointer.Position;
                         _rePinZoom = false;
                     }
-                    var diffY = (InputHelper.NewMouse.Y - _zoomStart.Y) / 100.0;
+                    var diffY = (Pointer.Position.Y - _zoomStart.Y) / 100.0;
                     SetExpTween(_expStart + diffY, 0);
 
                     ShowZoomSidebar();
@@ -694,11 +704,13 @@ namespace GameProject {
             // last frame's camera position and trails during XY tweens (LoadCam).
             _camera.XY = _xy.Value;
 
-            if (_dragZoom.Held()) {
+            // A pinch pins the world point under the midpoint of the two fingers, which is the
+            // same thing the drag zoom does with the cursor, so both take this path.
+            if (_dragZoom.Held() || pinching) {
                 SetXYTween(_xy.Value + _dragAnchor - _camera.ScreenToWorld(_pinCamera), 0);
-                _mouseWorld = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                _mouseWorld = _camera.ScreenToWorld(Pointer.Position);
             } else {
-                _mouseWorld = _camera.ScreenToWorld(InputHelper.NewMouse.X, InputHelper.NewMouse.Y);
+                _mouseWorld = _camera.ScreenToWorld(Pointer.Position);
 
                 if (_dragCamera.Pressed()) {
                     _dragAnchor = _mouseWorld;
@@ -719,7 +731,63 @@ namespace GameProject {
 
             UpdateFlight();
         }
+        /// <summary>
+        /// Two fingers: the distance between them is the zoom and their midpoint is the pan,
+        /// both read as a change since the gesture started so one pinch does either or both.
+        /// </summary>
+        /// <remarks>
+        /// Claiming the two contacts is what keeps a third finger from ending the gesture, and
+        /// what stops the same fingers from also drawing a stroke.
+        /// </remarks>
+        private bool UpdatePinch() {
+            if (!_pinch.Held() || !TryReadPinch(out Vector2 mid, out float spread)) {
+                _pinching = false;
+                return false;
+            }
+
+            if (!_pinching) {
+                // The first frame only records where the fingers are, since a delta needs two
+                // samples. A stroke already under way ends here rather than trailing the pinch.
+                _pinching = true;
+                _pinchStartExp = _targetExp;
+                _pinchSpread = spread;
+                _dragAnchor = _camera.ScreenToWorld(mid);
+
+                if (_isMouseDrawing) {
+                    _isMouseDrawing = false;
+                    CommitPending();
+                }
+            } else {
+                // Scale is exp(-exp), so spreading the fingers apart lowers the exponent.
+                SetExpTween(_pinchStartExp - Math.Log(spread / _pinchSpread), 0);
+            }
+
+            _pinCamera = mid;
+            return true;
+        }
+
+        private bool TryReadPinch(out Vector2 mid, out float spread) {
+            mid = Vector2.Zero;
+            spread = 0f;
+
+            IReadOnlyList<int> owned = _pinch.Owned;
+            if (owned.Count < 2) return false;
+            if (!InputHelper.NewTouch.FindById(owned[0], out TouchLocation a)) return false;
+            if (!InputHelper.NewTouch.FindById(owned[1], out TouchLocation b)) return false;
+
+            mid = (a.Position + b.Position) / 2f;
+            spread = Vector2.Distance(a.Position, b.Position);
+            // Two contacts on top of each other would divide the zoom by nothing.
+            return spread > 1f;
+        }
+
         private bool WrapMouse() {
+            #if BLAZORGL
+            // A page can't move the cursor without taking a pointer lock, so there is nothing
+            // to wrap here. Saying otherwise would re-pin the drag anchor every frame and the
+            // camera would stop following the mouse.
+            return false;
+            #else
             if (!InputHelper.IsActive) return false;
 
             var vp = GraphicsDevice.Viewport;
@@ -738,6 +806,7 @@ namespace GameProject {
 
             Mouse.SetPosition(nx, ny);
             return true;
+            #endif
         }
         private static double ScaleToExp(double scale) {
             return -Math.Log(scale);
@@ -2348,7 +2417,19 @@ namespace GameProject {
                 new GamePadCondition(GamePadButton.Back, 0)
             );
 
-        ICondition _draw = new MouseCondition(MouseButton.LeftButton);
+        /// <summary>Two fingers for zoom and pan, claimed for as long as they are down.</summary>
+        readonly Apos.Input.Track.TouchCondition _pinch = new(2);
+        bool _pinching = false;
+        double _pinchStartExp = 0.0;
+        float _pinchSpread = 0f;
+
+        // A finger draws too. Pointer already reports whichever of the two is in use, so
+        // nothing downstream of here branches on it.
+        ICondition _draw =
+            new AnyCondition(
+                new MouseCondition(MouseButton.LeftButton),
+                new TouchCondition()
+            );
         ICondition _line =
             new AnyCondition(
                 new KeyboardCondition(Keys.LeftShift),

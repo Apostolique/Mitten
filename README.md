@@ -23,6 +23,11 @@ Grab the builds <https://apos.itch.io/mitten>. It also runs in the browser there
 * E to toggle the eraser.
 * T to toggle the temporary mode. Strokes aren't saved and erase themselves from their starting point shortly after pen-down, retracing the stroke at the speed it was drawn — the oldest ink disappears first. Useful for pointing at things during a presentation. The delay and decay speed can be tuned in Settings.json (`tempDelaySeconds`, `tempDecaySpeed`).
 
+### Touch
+
+* One finger to draw.
+* Two fingers to zoom and pan at the same time. Pinch to zoom, and drag either finger to move the canvas. Whatever sits between your fingers stays between them.
+
 ### Camera
 
 * Middle click to drag the camera.
