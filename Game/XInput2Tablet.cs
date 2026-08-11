@@ -1,4 +1,4 @@
-#if SDLLINUX
+﻿#if SDLLINUX
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -50,7 +50,7 @@ namespace GameProject {
         public string DeviceSummary => _devices.Count == 0 ? "none" : string.Join(", ", _deviceNames);
 
         /// <summary>Window-relative (x, y, pressure 0..1) packets since the last call.</summary>
-        public IEnumerator<(int, int, float)> GetPackets() {
+        public IEnumerator<(float, float, float)> GetPackets() {
             _packets.Clear();
             Drain();
             return _packets.GetEnumerator();
@@ -209,7 +209,7 @@ namespace GameProject {
         private Dictionary<int, DeviceState> _devices = [];
         private readonly List<string> _deviceNames = [];
         private string _lastSummary = "";
-        private readonly List<(int, int, float)> _packets = [];
+        private readonly List<(float, float, float)> _packets = [];
 
         private const int GenericEvent = 35;
         private const int XEventSize = 192;

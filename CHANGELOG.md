@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - Nothing yet!
 
+## [3.3.0] - 2026-08-10
+
+### Added
+
+- A browser build, published to itch.io alongside the desktop ones.
+- Pen pressure in the browser build.
+- Browser drawings are saved as you go and persist between visits.
+
+### Changed
+
+- Text is now drawn by Apos.Shapes, dropping the FontStashSharp dependency.
+- Updated to Apos.Input 3.0.0, Apos.Shapes 0.8.1 and Apos.Tweens 0.2.0.
+
 ## [3.2.0] - 2026-07-26
 
 ### Changed
@@ -376,7 +389,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Undo and redo (disabled while drawing).
 - Saving drawings to disk.
 
-[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.2.0...HEAD
+[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.3.0...HEAD
+[3.3.0]: https://github.com/Apostolique/Mitten/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/Apostolique/Mitten/compare/v3.1.2...v3.2.0
 [3.1.2]: https://github.com/Apostolique/Mitten/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/Apostolique/Mitten/compare/v3.1.0...v3.1.1

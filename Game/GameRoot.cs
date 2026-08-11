@@ -1,22 +1,25 @@
+﻿// Wintab on Windows, XInput2 on Linux, pointer events in the browser. Three sources, one set
+// of (x, y, pressure) packets, so everything downstream of the enumerator is shared.
+#if SDLWINDOWS || SDLLINUX || BLAZORGL
+#define TABLET
+#endif
+
 using Apos.Input;
 using Track = Apos.Input.Track;
 using Apos.Shapes;
 using Apos.Tweens;
-using FontStashSharp;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.IO;
 using System.Collections;
 
 #if SDLWINDOWS
 using Apos.WintabDN;
 #endif
-using System.Text.Json.Serialization.Metadata;
 
 // TODO:
 //       Add tablet pressure sensitivity on macOS. (Windows uses Wintab, Linux uses XInput2.)
@@ -30,9 +33,33 @@ namespace GameProject {
             };
             Content.RootDirectory = "Content";
 
-            _settings = EnsureJson("Settings.json", SettingsContext.Default.Settings);
+            _settings = Store.Ensure(Store.SettingsFile, SettingsContext.Default.Settings);
             IsMouseVisible = _settings.ShowMouse;
         }
+
+        /// <summary>Device pixels the browser packs into a CSS pixel. 1 everywhere else.</summary>
+        /// <remarks>
+        /// The canvas is sized in device pixels so strokes come out at the screen's real
+        /// resolution instead of being magnified from a third of it on a phone. Every size in
+        /// the game is absolute though, so the 10 px zoom bar and the 24 px debug text would
+        /// come out a third as big. The game keeps working in CSS pixels and hands the scale to
+        /// the view matrix instead. Apos.Shapes draws analytically, so the strokes stay sharp
+        /// under it rather than being magnified.
+        /// </remarks>
+        public static float UiScale = 1f;
+
+        /// <summary>Back buffer the browser host wants, in device pixels. Null everywhere else.</summary>
+        /// KNI resizes the canvas back to the CSS size whenever the window changes, so the back
+        /// buffer has to be put back alongside it or the two disagree and the game draws into a
+        /// corner of its own canvas.
+        public static Point? BackBuffer;
+
+        /// <summary>Screen size in the units the game lays out in.</summary>
+        public Vector2 ViewSize =>
+            new Vector2(GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height) / UiScale;
+
+        /// <summary>Scales everything drawn in CSS pixels up to the device pixels behind them.</summary>
+        public static Matrix UiMatrix => Matrix.CreateScale(UiScale, UiScale, 1f);
 
         protected override void Initialize() {
             Window.AllowUserResizing = true;
@@ -70,16 +97,19 @@ namespace GameProject {
             }
             #endif
 
+            // The canvas fills the frame it is served in and the page owns its size, so there
+            // is no window here to place, size, or take fullscreen.
+            #if !BLAZORGL
             RestoreWindow();
             if (_settings.IsFullscreen) {
                 ApplyFullscreenChange(false);
             }
+            #endif
 
             base.Initialize();
         }
 
         protected override void LoadContent() {
-            _s = new SpriteBatch(GraphicsDevice);
             _sb = new ShapeBatch(GraphicsDevice) {
                 // Every shape here is a solid color, so there is nothing to interpolate
                 // and all three spaces pack the same bits. Rgb reaches them through a
@@ -90,8 +120,9 @@ namespace GameProject {
             // TODO: use this.Content to load your game content here
             InputHelper.Setup(this);
 
-            _fontSystem = new FontSystem();
-            _fontSystem.AddFont(TitleContainer.OpenStream($"{Content.RootDirectory}/source-code-pro-medium.ttf"));
+            using (Stream ttf = TitleContainer.OpenStream($"{Content.RootDirectory}/source-code-pro-medium.ttf")) {
+                _font = new ShapeFont(ttf);
+            }
 
             _lines = [];
             _strokes = [];
@@ -121,29 +152,58 @@ namespace GameProject {
             SaveDrawing();
             // SavePalette(); // Not required unless we code a palette creation UI.
 
+            #if !BLAZORGL
             if (!_settings.IsFullscreen) {
                 SaveWindow();
             }
+            #endif
 
-            SaveJson("Settings.json", _settings, SettingsContext.Default.Settings);
+            Store.Save(Store.SettingsFile, _settings, SettingsContext.Default.Settings);
 
             base.UnloadContent();
         }
 
+        #if BLAZORGL
+        /// <summary>Writes the drawing and the settings out.</summary>
+        /// <remarks>
+        /// A browser tab closing runs no shutdown the game can hook, so `UnloadContent` never
+        /// arrives and the page calls this instead, on a timer and on its way out.
+        /// </remarks>
+        public void SaveNow() {
+            SaveDrawing();
+            Store.Save(Store.SettingsFile, _settings, SettingsContext.Default.Settings);
+        }
+        #endif
+
         protected override void Update(GameTime gameTime) {
-            #if SDLWINDOWS || SDLLINUX
+            #if TABLET
             bool tabletProcessed = false;
             #endif
             #if SDLLINUX
             // Pumps hotplug events so a tablet plugged in after startup starts working.
             _tabletIsValid = _xiTablet is not null && _xiTablet.IsValid;
+            #elif BLAZORGL
+            // A player can pick a pen up at any point, and nothing announces it, so this asks
+            // every frame rather than once at startup.
+            _tabletIsValid = Pen is not null && Pen.IsValid;
             #endif
 
-            InputHelper.UpdateSetup();
+            InputHelper.UpdateSetup(gameTime);
             TweenHelper.UpdateSetup(gameTime);
 
+            if (BackBuffer is Point target && target.X > 0 && target.Y > 0 &&
+                (_graphics.PreferredBackBufferWidth != target.X || _graphics.PreferredBackBufferHeight != target.Y)) {
+                _graphics.PreferredBackBufferWidth = target.X;
+                _graphics.PreferredBackBufferHeight = target.Y;
+                _graphics.ApplyChanges();
+            }
+
+            // Nothing to quit to in a browser tab, and Escape is the key that leaves the
+            // fullscreen the player is most likely drawing in.
+            #if !BLAZORGL
             if (_quit.Pressed())
                 Exit();
+            #endif
 
             if (_toggleDebug.Pressed()) _showDebug = !_showDebug;
             if (_togglePaths.Pressed()) _usePaths = !_usePaths;
@@ -154,18 +214,20 @@ namespace GameProject {
             if (_resetFPS.Pressed()) _fps.DroppedFrames = 0;
             _fps.Update(gameTime);
 
+            #if !BLAZORGL
             if (_toggleFullscreen.Pressed()) {
                 ToggleFullscreen();
             }
             if (_toggleBorderless.Pressed()) {
                 ToggleBorderless();
             }
+            #endif
 
             if (_pickColor.Held()) {
                 if (_pickBackground.Held()) {
-                    _bgColor = _cp.UpdateInput();
+                    _bgColor = _cp.UpdateInput(ViewSize);
                 } else {
-                    _color = _cp.UpdateInput();
+                    _color = _cp.UpdateInput(ViewSize);
                 }
             } else {
                 UpdateCamera();
@@ -180,7 +242,7 @@ namespace GameProject {
                     var diffX = (InputHelper.NewMouse.X - _thicknessStart.X) / 2f;
                     _radius = MathHelper.Clamp(_radiusStart + diffX, 0.5f, 1000f);
                 } else {
-                    #if SDLWINDOWS || SDLLINUX
+                    #if TABLET
                     if (!_isMouseDrawing && _tabletIsValid) {
                         StrokeWithTablet(gameTime.TotalGameTime.TotalMilliseconds);
                         tabletProcessed = true;
@@ -302,7 +364,7 @@ namespace GameProject {
 
             UpdateTempStrokes();
 
-            #if SDLWINDOWS || SDLLINUX
+            #if TABLET
             if (!tabletProcessed && _tabletIsValid) {
                 UpdateTablet();
             }
@@ -316,7 +378,7 @@ namespace GameProject {
             _fps.Draw(gameTime);
             GraphicsDevice.Clear(_bgColor);
 
-            _sb.Begin(_camera.View);
+            _sb.Begin(_camera.View * UiMatrix);
             _pathCount = 0;
 
             var fgColor = _color;
@@ -325,9 +387,8 @@ namespace GameProject {
             }
 
             _drawables.Clear();
-            _screenRadius = 0.5f * MathF.Sqrt(
-                GraphicsDevice.Viewport.Width * (float)GraphicsDevice.Viewport.Width +
-                GraphicsDevice.Viewport.Height * (float)GraphicsDevice.Viewport.Height) + 2f;
+            Vector2 view = ViewSize;
+            _screenRadius = 0.5f * MathF.Sqrt(view.X * view.X + view.Y * view.Y) + 2f;
             int fullCoverId = _coverage.Collect(_drawables, _camera.XY, _camera.Scale, _screenRadius);
             _emitFullCoverId = -1;
             CollectVisible();
@@ -432,57 +493,59 @@ namespace GameProject {
             // _sb.FillCircle(_tabletXY, 100f * _tabletPressure, TWColor.White);
             _sb.End();
 
-            _sb.Begin();
+            _sb.Begin(UiMatrix);
             var camExp = ScaleToExp(_camera.Scale);
             if (_zoomSidebarTween.Value > 0f) {
                 var length = _minExp - _maxExp;
                 var percent = (float)((camExp - _maxExp) / length);
-                _sb.DrawLine(new Vector2(0, GraphicsDevice.Viewport.Height), new Vector2(0, GraphicsDevice.Viewport.Height * percent), 10f, TWColor.White.SetAlpha(_zoomSidebarTween.Value), TWColor.Black.SetAlpha(_zoomSidebarTween.Value), 2f);
+                _sb.DrawLine(new Vector2(0, view.Y), new Vector2(0, view.Y * percent), 10f, TWColor.White.SetAlpha(_zoomSidebarTween.Value), TWColor.Black.SetAlpha(_zoomSidebarTween.Value), 2f);
             }
             _sb.End();
 
             if (_zoomSidebarTween.Value > 0f) {
                 // Absolute zoom relative to the original top frame, as a power of ten.
                 double absLog10 = (_anchor.Level * Frame.LnK - camExp) / Math.Log(10.0);
-                var font = _fontSystem.GetFont(20);
-                _s.Begin();
-                _s.DrawString(font, $"x10^{absLog10:0.0}", new Vector2(16, GraphicsDevice.Viewport.Height - 28), TWColor.White.SetAlpha(_zoomSidebarTween.Value));
-                _s.End();
+                _sb.Begin(UiMatrix);
+                _sb.DrawString(_font, $"x10^{absLog10:0.0}", new Vector2(16, view.Y - 28), 20f, TWColor.White.SetAlpha(_zoomSidebarTween.Value));
+                _sb.End();
             }
 
             if (_pickColor.Held()) {
-                _cp.Draw(_fontSystem, _pickBackground.Held(), _bgColor);
+                _cp.Draw(_font, _pickBackground.Held(), _bgColor, view);
             }
 
             if (_showDebug) {
-                var font = _fontSystem.GetFont(24);
-                _s.Begin();
-                _s.DrawString(font, $"fps: {_fps.FramesPerSecond} - Dropped Frames: {_fps.DroppedFrames} - Draw ms: {_fps.TimePerFrame} - Update ms: {_fps.TimePerUpdate}", new Vector2(10, 10), TWColor.White);
-                _s.DrawString(font, $"In view: {inView} -- Total: {_lines.Count} -- {_camera.ScreenToWorldScale()}", new Vector2(10, GraphicsDevice.Viewport.Height - 24), TWColor.White);
-                _s.DrawString(font, _usePaths ? $"Paths: {_pathCount}" : "Paths: off", new Vector2(10, 34), TWColor.White);
-                _s.DrawString(font, $"Level: {_anchor.Level} -- Cell: ({_anchor.Index.X}, {_anchor.Index.Y}) -- Coverage: {_coverage.Count}", new Vector2(10, GraphicsDevice.Viewport.Height - 48), TWColor.White);
-                _s.End();
+                _sb.Begin(UiMatrix);
+                _sb.DrawString(_font, $"fps: {_fps.FramesPerSecond} - Dropped Frames: {_fps.DroppedFrames} - Draw ms: {_fps.TimePerFrame} - Update ms: {_fps.TimePerUpdate}", new Vector2(10, 10), 24f, TWColor.White);
+                _sb.DrawString(_font, $"In view: {inView} -- Total: {_lines.Count} -- {_camera.ScreenToWorldScale()}", new Vector2(10, view.Y - 24), 24f, TWColor.White);
+                _sb.DrawString(_font, _usePaths ? $"Paths: {_pathCount}" : "Paths: off", new Vector2(10, 34), 24f, TWColor.White);
+                _sb.DrawString(_font, $"Level: {_anchor.Level} -- Cell: ({_anchor.Index.X}, {_anchor.Index.Y}) -- Coverage: {_coverage.Count}", new Vector2(10, view.Y - 48), 24f, TWColor.White);
+                _sb.End();
             }
 
             base.Draw(gameTime);
         }
 
-        #if SDLWINDOWS || SDLLINUX
+        #if TABLET
         private void UpdateTablet() {
             #if SDLWINDOWS
             _data.FlushDataPackets(100);
-            #else
+            #elif SDLLINUX
             _xiTablet.Flush();
             #endif
+            // The browser has nothing to pump: the page pushes each point into a queue as it
+            // arrives and `GetPackets` empties it.
         }
 
         private void StrokeWithTablet(double totalTime) {
             bool ranOnce = false;
 
             #if SDLWINDOWS
-            using IEnumerator<(int, int, float)> t = new QueryTablet(_data);
+            using IEnumerator<(float, float, float)> t = new QueryTablet(_data);
+            #elif SDLLINUX
+            using IEnumerator<(float, float, float)> t = _xiTablet.GetPackets();
             #else
-            using IEnumerator<(int, int, float)> t = _xiTablet.GetPackets();
+            using IEnumerator<(float, float, float)> t = Pen!.GetPackets();
             #endif
             bool isValid;
             do {
@@ -496,8 +559,8 @@ namespace GameProject {
                 Vector2D currentCursor;
 
                 if (isValid) {
-                    int x = t.Current.Item1;
-                    int y = t.Current.Item2;
+                    float x = t.Current.Item1;
+                    float y = t.Current.Item2;
                     _tabletPressure = t.Current.Item3;
 
                     #if SDLWINDOWS
@@ -1722,7 +1785,7 @@ namespace GameProject {
                 SavedRadii = new Dictionary<string, float>(_savedRadii)
             };
 
-            SaveJson("Drawing.json", dd, DrawingDataContext.Default.DrawingData);
+            Store.Save(Store.DrawingFile, dd, DrawingDataContext.Default.DrawingData);
         }
         private static DrawingData.JsonLine ToJsonLine(Line e) {
             return new DrawingData.JsonLine {
@@ -1804,7 +1867,7 @@ namespace GameProject {
             };
         }
         private void LoadDrawing() {
-            DrawingData dd = EnsureJson("Drawing.json", DrawingDataContext.Default.DrawingData);
+            DrawingData dd = Store.Ensure(Store.DrawingFile, DrawingDataContext.Default.DrawingData);
             _nextId = dd.NextId;
             _group = (_nextId, _nextId);
             _bgColor = new Color(dd.BackgroundColor.R, dd.BackgroundColor.G, dd.BackgroundColor.B);
@@ -2036,15 +2099,7 @@ namespace GameProject {
             // history on exit.
             if (dd.Nodes.Count == 0 && dd.RedoLines.Count == 0) return;
 
-            string source = GetPath("Drawing.json");
-            string backup = GetPath("Drawing.v2.bak.json");
-            try {
-                if (File.Exists(source) && !File.Exists(backup)) {
-                    File.Copy(source, backup);
-                }
-            } catch (Exception ex) {
-                Console.WriteLine($"Drawing backup failed: {ex}");
-            }
+            Store.Backup(Store.DrawingFile, "Drawing.v2.bak.json");
         }
         private static void BackupV1Drawing(DrawingData dd) {
             // One-time safety net before migrating: the v2 save is not readable by
@@ -2052,15 +2107,7 @@ namespace GameProject {
             // keep the original around for rollbacks.
             if (dd.Lines.Count == 0 && dd.RedoLines.Count == 0) return;
 
-            string source = GetPath("Drawing.json");
-            string backup = GetPath("Drawing.v1.bak.json");
-            try {
-                if (File.Exists(source) && !File.Exists(backup)) {
-                    File.Copy(source, backup);
-                }
-            } catch (Exception ex) {
-                Console.WriteLine($"Drawing backup failed: {ex}");
-            }
+            Store.Backup(Store.DrawingFile, "Drawing.v1.bak.json");
         }
         private List<Line> LoadDrawingV1(DrawingData dd) {
             // v1: float coordinates in one flat world frame. Everything lands in a
@@ -2120,10 +2167,10 @@ namespace GameProject {
             Palette p = new() {
                 Colors = colors
             };
-            SaveJson("Palette.json", p, PaletteContext.Default.Palette);
+            Store.Save(Store.PaletteFile, p, PaletteContext.Default.Palette);
         }
         private void LoadPalette() {
-            Palette p = EnsureJson("Palette.json", PaletteContext.Default.Palette);
+            Palette p = Store.Ensure(Store.PaletteFile, PaletteContext.Default.Palette);
 
             Color[][] colors = new Color[p.Colors.Length][];
 
@@ -2138,49 +2185,8 @@ namespace GameProject {
             _cp.Colors = colors;
         }
 
-        static readonly string _savePath = FindSavePath();
-        public static string GetPath(string name) => Path.Combine(_savePath, name);
-        // On macOS the executable lives inside Mitten.app, and an updater is free to
-        // replace a bundle wholesale, so drawings go to the usual per-user directory
-        // instead. Everywhere else they stay next to the executable.
-        private static string FindSavePath() {
-            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory!;
 
-            if (!OperatingSystem.IsMacOS()) return baseDirectory;
-
-            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            if (string.IsNullOrEmpty(home)) return baseDirectory;
-
-            string path = Path.Combine(home, "Library", "Application Support", "Mitten");
-            try {
-                Directory.CreateDirectory(path);
-            } catch (Exception) {
-                // Losing the drawing beats failing to start, so fall back to the bundle.
-                return baseDirectory;
-            }
-
-            return path;
-        }
-        public static void SaveJson<T>(string name, T json, JsonTypeInfo<T> typeInfo) {
-            string jsonPath = GetPath(name);
-            string jsonString = JsonSerializer.Serialize(json, typeInfo);
-            File.WriteAllText(jsonPath, jsonString);
-        }
-        public static T EnsureJson<T>(string name, JsonTypeInfo<T> typeInfo) where T : new() {
-            T json;
-            string jsonPath = GetPath(name);
-
-            if (File.Exists(jsonPath)) {
-                json = JsonSerializer.Deserialize(File.ReadAllText(jsonPath), typeInfo)!;
-            } else {
-                json = new T();
-                string jsonString = JsonSerializer.Serialize(json, typeInfo);
-                File.WriteAllText(jsonPath, jsonString);
-            }
-
-            return json;
-        }
-
+        #if !BLAZORGL
         private void ToggleFullscreen() {
             bool oldIsFullscreen = _settings.IsFullscreen;
 
@@ -2242,6 +2248,7 @@ namespace GameProject {
             _graphics.PreferredBackBufferHeight = _settings.Height;
             _graphics.ApplyChanges();
         }
+        #endif
 
         private class SavedCamD {
             public Frame Node = null!;
@@ -2251,7 +2258,7 @@ namespace GameProject {
         }
 
         #if SDLWINDOWS
-        private struct QueryTablet : IEnumerator<(int, int, float)>, IEnumerable<(int, int, float)> {
+        private struct QueryTablet : IEnumerator<(float, float, float)>, IEnumerable<(float, float, float)> {
             public QueryTablet(CWintabData data) {
                 _count = 0;
                 _at = data.GetDataPackets(100, true, ref _count);
@@ -2265,7 +2272,7 @@ namespace GameProject {
                 _current = default;
             }
 
-            public readonly (int, int, float) Current => _current!.Value;
+            public readonly (float, float, float) Current => _current!.Value;
 
             readonly object IEnumerator.Current {
                 get {
@@ -2301,14 +2308,14 @@ namespace GameProject {
                 _current = default;
             }
 
-            public readonly IEnumerator<(int, int, float)> GetEnumerator() => this;
+            public readonly IEnumerator<(float, float, float)> GetEnumerator() => this;
             readonly IEnumerator IEnumerable.GetEnumerator() => this;
 
             private readonly WintabPacket[] _at;
             private int _index = 0;
             private readonly uint _count;
             private readonly float _maxPressure;
-            private (int, int, float)? _current;
+            private (float, float, float)? _current;
             private bool _isDone;
             private bool _isStarted;
         }
@@ -2316,9 +2323,8 @@ namespace GameProject {
 
         readonly GraphicsDeviceManager _graphics;
         CameraD _camera = null!;
-        SpriteBatch _s = null!;
         ShapeBatch _sb = null!;
-        FontSystem _fontSystem = null!;
+        ShapeFont _font = null!;
 
         readonly Settings _settings;
 
@@ -2640,8 +2646,11 @@ namespace GameProject {
         CWintabData _data = null!;
         #elif SDLLINUX
         XInput2Tablet _xiTablet = null!;
+        #elif BLAZORGL
+        /// <summary>Pen source the browser host installs before the game is built.</summary>
+        public static PointerTablet? Pen;
         #endif
-        #if SDLWINDOWS || SDLLINUX
+        #if TABLET
         bool _tabletIsValid = false;
         Vector2D _lastTablet = Vector2D.Zero;
         float _lastPressure = 0f;

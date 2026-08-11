@@ -7,7 +7,7 @@ Infinite canvas drawing application.
 
 ## Builds
 
-Grab the builds <https://apos.itch.io/mitten>.
+Grab the builds <https://apos.itch.io/mitten>. It also runs in the browser there.
 
 ## Controls
 
@@ -45,6 +45,9 @@ Grab the builds <https://apos.itch.io/mitten>.
 * M to show or hide the mouse cursor.
 * B to box select and edit strokes.
 
+In the browser, F11 and Alt + Enter do nothing and Escape doesn't quit. Use itch.io's own
+fullscreen button instead.
+
 ## Saved files
 
 Saved next to the application's executable. On macOS they go to
@@ -54,11 +57,20 @@ Saved next to the application's executable. On macOS they go to
 * Drawing.json - Your whole canvas is saved there including undo redo and camera position.
 * Settings.json - Window settings are saved here. Includes if the app should start in fullscreen, vsync and fixed timestep.
 
+In the browser there is no directory to write to, so the same files go to the browser's own
+storage under a `mitten/` prefix. The drawing goes to IndexedDB and the rest to
+localStorage, which caps out around 5 MB and is shared with every other html5 game on
+itch.io. Clearing site data for the page clears the drawing with it.
+
+Nothing in a browser corresponds to quitting, so the drawing is written every 30 seconds and
+again whenever the page is hidden, rather than on the way out.
+
 ## Restore
 
 ```
 dotnet restore Platforms/DesktopGL
 dotnet restore Platforms/WindowsDX
+dotnet restore Platforms/BlazorGL.KNI
 ```
 
 ## Run
@@ -66,6 +78,15 @@ dotnet restore Platforms/WindowsDX
 ```
 dotnet run --project Platforms/DesktopGL
 dotnet run --project Platforms/WindowsDX
+```
+
+The browser build has to be tested against published output rather than `dotnet run`. The
+font is linked in as a static web asset, which only lands in `wwwroot` on publish, so
+`dotnet run` serves a 404 for it and the game dies while loading. Publish it and serve the
+directory:
+
+```
+dotnet publish Platforms/BlazorGL.KNI -c Release --output artifacts/web
 ```
 
 ## Debug
@@ -81,6 +102,13 @@ dotnet publish Platforms/DesktopGL -c Release -r linux-x64 --output artifacts/li
 
 ```
 dotnet publish Platforms/WindowsDX -c Release -r win-x64 --output artifacts/windowsdx
+```
+
+The browser build goes up to itch.io's `html5` channel, which serves the contents of
+`artifacts/web/wwwroot`:
+
+```
+dotnet publish Platforms/BlazorGL.KNI -c Release --output artifacts/web
 ```
 
 macOS goes through a script, since the build has to end up inside a `.app` bundle:

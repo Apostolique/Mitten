@@ -1,0 +1,338 @@
+﻿<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Mitten</title>
+    <base href="./" />
+    <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet" />
+    <link href="css/app.css" rel="stylesheet" />
+    <link href="Mitten.styles.css" rel="stylesheet" />
+</head>
+
+<body>
+
+    <div id="app">
+        <div id="loading" style="display: table-cell; margin: auto; width:100vw; height:100vh; vertical-align: middle; background: #000;">
+            <div style="display: block; margin: auto; width: 9em; color: #d4d4d8;font-family: 'Segoe UI', sans-serif;">
+                <div style="text-align: center; font-size: 0.85em;">Made with<br/><a href="https://github.com/kniEngine/kni"><img src="kni.png" border="0" alt="Kni"></a></div>
+                <div style="text-align: center; font-size: 1.8em;">loading&nbsp;<marquee style="width:0.9em; vertical-align: bottom;">.&nbsp;.&nbsp;.&nbsp;&nbsp;&nbsp;</marquee></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">x</a>
+    </div>
+
+    <!-- No `.br` copies get published, so this loads the plain files. itch.io unpacks `.br`
+         on the way out anyway, which leaves nothing for a decode here to do. -->
+    <script src="_framework/blazor.webassembly.js"></script>
+
+    <script src="_content/nkast.Wasm.JSInterop/js/JSObject.8.0.11.js"></script>
+    <script src="_content/nkast.Wasm.Dom/js/Window.8.0.11.js"></script>
+    <script src="_content/nkast.Wasm.Dom/js/Document.8.0.11.js"></script>
+    <script src="_content/nkast.Wasm.Dom/js/Navigator.8.0.11.js"></script>
+    <script src="_content/nkast.Wasm.Dom/js/Gamepad.8.0.11.js"></script>
+    <script src="_content/nkast.Wasm.Dom/js/Media.8.0.11.js"></script>
+    <script src="_content/nkast.Wasm.XHR/js/XHR.8.0.11.js"></script>
+    <script src="_content/nkast.Wasm.Canvas/js/Canvas.8.0.11.js"></script>
+    <script src="_content/nkast.Wasm.Canvas/js/CanvasGLContext.8.0.11.js"></script>
+    <script src="_content/nkast.Wasm.Audio/js/Audio.8.0.11.js"></script>
+    <script src="_content/nkast.Wasm.XR/js/XR.8.0.11.js"></script>
+
+    <script>
+        // The drawing is kept in IndexedDB rather than localStorage. localStorage caps out
+        // around 5 MB and itch.io serves every html5 game from one origin, so that cap is
+        // shared with every other game the player has opened, while a 1300 segment sketch
+        // already writes ~580 KB. The settings and the palette are small and stay in
+        // localStorage.
+        //
+        // `LoadDrawing` runs inside `LoadContent` and is synchronous, so it can't await
+        // anything. IndexedDB has no synchronous API, so every key is fetched into `mittenFiles`
+        // before the first tick and the game reads out of that.
+        const MITTEN_DB = 'mitten';
+        const MITTEN_STORE = 'files';
+
+        var mittenFiles = {};
+
+        function mittenReq(request)
+        {
+            return new Promise(function (resolve, reject)
+            {
+                request.onsuccess = function () { resolve(request.result); };
+                request.onerror = function () { reject(request.error); };
+            });
+        }
+
+        function mittenOpen()
+        {
+            return new Promise(function (resolve, reject)
+            {
+                var rq = indexedDB.open(MITTEN_DB, 1);
+                rq.onupgradeneeded = function () { rq.result.createObjectStore(MITTEN_STORE); };
+                rq.onsuccess = function () { resolve(rq.result); };
+                rq.onerror = function () { reject(rq.error); };
+            });
+        }
+
+        async function mittenLoad()
+        {
+            try
+            {
+                var db = await mittenOpen();
+                var store = db.transaction(MITTEN_STORE, 'readonly').objectStore(MITTEN_STORE);
+                var keys = await mittenReq(store.getAllKeys());
+                var values = await mittenReq(store.getAll());
+                for (var i = 0; i < keys.length; i++) mittenFiles[keys[i]] = values[i];
+            }
+            catch (e)
+            {
+                // A private window with storage turned off lands here. Drawing on a canvas that
+                // won't persist beats refusing to start.
+                console.error('mitten: could not read stored drawings', e);
+            }
+        }
+
+        window.mittenRead = function (name)
+        {
+            var text = mittenFiles[name];
+            return text === undefined ? null : text;
+        };
+
+        // The copy in `mittenFiles` is what the game reads back, so it updates now while the
+        // write behind it settles whenever it settles.
+        window.mittenWrite = function (name, text)
+        {
+            mittenFiles[name] = text;
+            mittenOpen()
+                .then(function (db)
+                {
+                    var tx = db.transaction(MITTEN_STORE, 'readwrite');
+                    tx.objectStore(MITTEN_STORE).put(text, name);
+                })
+                .catch(function (e) { console.error('mitten: could not save the drawing', e); });
+        };
+
+        // Nothing in a browser corresponds to quitting a game, so the drawing is written on a
+        // timer and again as the page goes away. `visibilitychange` is the one that does the
+        // work: switching tabs or apps fires it early enough for the write to land, while
+        // `pagehide` can arrive too late for IndexedDB to commit and is only a backstop.
+        function mittenSaveNow()
+        {
+            if (!window.theInstance) return;
+            try { window.theInstance.invokeMethod('SaveDotNet'); }
+            catch (e) { console.error('mitten: save failed', e); }
+        }
+
+        document.addEventListener('visibilitychange', function ()
+        {
+            if (document.visibilityState === 'hidden') mittenSaveNow();
+        });
+        window.addEventListener('pagehide', mittenSaveNow);
+        setInterval(mittenSaveNow, 30000);
+
+        // The backing store is sized in device pixels while the element stays sized in CSS
+        // pixels, so strokes render at the screen's real resolution instead of being magnified
+        // from a third of it on a phone. KNI resets the backing store to the CSS size in
+        // `UpdateBackBufferSize` on every resize, so this re-asserts each frame rather than
+        // running once, and the game re-applies the matching back buffer when it notices.
+        //
+        // Sizing the canvas rather than zooming the viewport is what makes this survive
+        // itch.io: a viewport meta tag only applies to the top level document and the game is
+        // served in an iframe, so the tag would be ignored exactly where it's needed.
+        //
+        // The pointer is untouched by any of it. KNI reports mouse and touch in CSS pixels and
+        // scales touch by `DisplayWidth / ClientBounds.Width`, which are both the backing store,
+        // so a contact still arrives in the units the game lays out in.
+        //
+        // Filed upstream as kniEngine/kni#2692, still open. All of this comes out if it lands.
+        window.mittenTarget = { w: 0, h: 0, scale: 1 };
+
+        function mittenSizeCanvas()
+        {
+            var canvas = document.getElementById('theCanvas');
+            var holder = document.getElementById('canvasHolder');
+            if (!canvas || !holder) return;
+
+            var dpr = window.devicePixelRatio || 1;
+            var cssW = holder.clientWidth, cssH = holder.clientHeight;
+
+            // A backgrounded page measures zero. Resizing on that would collapse the back buffer
+            // and leave a black screen behind when the tab comes back, so leave it alone and let
+            // the next frame after it's visible again do the work.
+            if (cssW <= 0 || cssH <= 0) return;
+
+            var bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
+
+            if (canvas.width !== bw || canvas.height !== bh)
+            {
+                canvas.width = bw;
+                canvas.height = bh;
+            }
+            // Without an explicit CSS size the element takes its width attribute as CSS pixels,
+            // which would blow it up to three times the screen.
+            if (canvas.style.width !== cssW + 'px')
+            {
+                canvas.style.width = cssW + 'px';
+                canvas.style.height = cssH + 'px';
+            }
+
+            window.mittenTarget = { w: bw, h: bh, scale: dpr };
+        }
+
+        window.mittenBackBufferWidth = function () { return window.mittenTarget.w; };
+        window.mittenBackBufferHeight = function () { return window.mittenTarget.h; };
+        window.mittenUiScale = function () { return window.mittenTarget.scale; };
+
+        // Pen pressure. KNI reports a pointer's position but not how hard it is pressed, so the
+        // points are collected here and the game drains them once a frame, the same way it
+        // drains Wintab packets on Windows.
+        //
+        // Pen only. A mouse reports 0.5 while it is down and a finger around 1, and letting
+        // those through here would draw every mouse stroke at half thickness. They keep going
+        // through KNI's own mouse and touch input.
+        //
+        // A pointer moves faster than a frame does, so `getCoalescedEvents` is what keeps the
+        // points the browser dropped between frames. Without it a fast stroke comes out as a
+        // handful of long straight segments.
+        var mittenPenQueue = [];
+        var mittenSawPen = false;
+
+        function mittenPen(e)
+        {
+            if (e.pointerType !== 'pen') return;
+            mittenSawPen = true;
+
+            var points = (e.type === 'pointermove' && e.getCoalescedEvents)
+                ? e.getCoalescedEvents() : [e];
+            var lifted = e.type === 'pointerup' || e.type === 'pointercancel';
+
+            for (var i = 0; i < points.length; i++)
+            {
+                var p = points[i];
+                // Relative to the canvas, since that is what the game's coordinates start from.
+                var box = e.target.getBoundingClientRect ? e.target.getBoundingClientRect() : { left: 0, top: 0 };
+                mittenPenQueue.push(p.clientX - box.left, p.clientY - box.top, lifted ? 0 : p.pressure);
+            }
+        }
+
+        window.mittenPenSeen = function () { return mittenSawPen; };
+
+        window.mittenDrainPen = function ()
+        {
+            var out = mittenPenQueue;
+            mittenPenQueue = [];
+            return out;
+        };
+
+        // KNI drives `Game.IsActive` off the window's focus and blur events, and Apos.Input gates
+        // every condition on it, so an inactive game can't report a press. The pointer position
+        // isn't gated, which is why this shows up as a brush that follows the cursor without
+        // ever drawing.
+        //
+        // In an iframe that state sticks: coming back to a backgrounded itch.io page fires no
+        // focus event on the frame, so the blur from leaving is never undone. Visibility is the
+        // signal that actually tracks this on the web, and a pointer arriving is proof the player
+        // is on the game whatever the frame thinks, so the missing focus is synthesized from
+        // both. KNI only listens for the event, so dispatching one is enough.
+        //
+        // Mirrors KNI's own flag rather than asking the browser. `document.hasFocus()` is the
+        // wrong question: going fullscreen from the itch.io page leaves the frame's document
+        // focused while KNI never saw a focus event, so the game reads inactive and a guard on
+        // hasFocus() would decline to fix it. These two listeners see exactly what KNI's do.
+        //
+        // Filed upstream as kniEngine/kni#2693, still open.
+        var mittenActive = false;
+        window.addEventListener('focus', function () { mittenActive = true; });
+        window.addEventListener('blur', function () { mittenActive = false; });
+
+        /// force: dispatch even when the game already reads active. For the rare transitions,
+        /// where a redundant activation is cheaper than staying wrong.
+        function mittenEnsureActive(force)
+        {
+            if (document.visibilityState === 'hidden') return;
+            if (mittenActive && !force) return;
+            try { window.focus(); } catch (e) { }
+            window.dispatchEvent(new Event('focus'));
+        }
+
+        document.addEventListener('visibilitychange', function ()
+        {
+            if (document.visibilityState === 'visible') mittenEnsureActive(true);
+        });
+        window.addEventListener('pageshow', function () { mittenEnsureActive(true); });
+        // Entering or leaving fullscreen moves focus without telling the frame about it.
+        document.addEventListener('fullscreenchange', function () { mittenEnsureActive(true); });
+        document.addEventListener('webkitfullscreenchange', function () { mittenEnsureActive(true); });
+        // Capture, so the game is active before KNI's own handler queues the contact. Not forced,
+        // so an ordinary stroke doesn't raise an activation every time.
+        window.addEventListener('touchstart', function () { mittenEnsureActive(false); }, true);
+        window.addEventListener('mousedown', function () { mittenEnsureActive(false); }, true);
+
+        var mittenSynced = false;
+
+        function tickJS()
+        {
+            mittenSizeCanvas();
+            window.theInstance.invokeMethod('TickDotNet');
+
+            // The game window is built on the first tick, and KNI registers its focus listener
+            // with it. This script registered earlier, so any focus event in between was seen
+            // here and missed there, which would leave the mirror reading active over a game
+            // that isn't. One forced pass settles it.
+            if (!mittenSynced)
+            {
+                mittenSynced = true;
+                mittenEnsureActive(true);
+            }
+
+            window.requestAnimationFrame(tickJS);
+        }
+
+        window.initRenderJS = async (instance) =>
+        {
+            window.theInstance = instance;
+
+            // The first tick builds the game, and building it is what reads the drawing, so the
+            // fetch has to be done by then or the player starts on a blank canvas and saves it
+            // back over the real one.
+            await mittenLoad();
+
+            // Sized before the first tick, so the graphics device reads the real resolution in
+            // `PlatformInitialize` rather than starting soft and resetting a frame later.
+            mittenSizeCanvas();
+
+            // disable context menu on right click
+            var canvas = document.getElementById('theCanvas');
+            canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+            canvas.addEventListener('pointerdown', mittenPen);
+            canvas.addEventListener('pointermove', mittenPen);
+            canvas.addEventListener('pointerup', mittenPen);
+            canvas.addEventListener('pointercancel', mittenPen);
+
+            // begin game loop
+            window.requestAnimationFrame(tickJS);
+        };
+
+        window.addEventListener("keydown", function(event)
+        {
+            // Prevent Arrows Keys and Spacebar scrolling the outer page
+            // when running inside an iframe. e.g: itch.io embedding.
+            if ([32, 37, 38, 39, 40].indexOf(event.keyCode) > -1)
+                event.preventDefault();
+        });
+        window.addEventListener("wheel", function(event)
+        {
+            // Prevent Mousewheel scrolling the outer page
+            // when running inside an iframe. e.g: itch.io embedding.
+            event.preventDefault();
+        }, { passive: false });
+    </script>
+</body>
+
+</html>

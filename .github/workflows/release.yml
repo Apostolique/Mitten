@@ -8,10 +8,11 @@ on:
 env:
   ITCH_USER_NAME: apos
   ITCH_GAME_NAME: mitten
-  PROJECT_PATH: Platforms/DesktopGL
+  DESKTOP_PATH: Platforms/DesktopGL
+  WEB_PATH: Platforms/BlazorGL.KNI
 
 jobs:
-  windows-linux:
+  windows-linux-web:
 
     runs-on: ubuntu-24.04
 
@@ -23,7 +24,10 @@ jobs:
     - name: Setup .NET Core
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '9.0.x'
+        # The desktop builds target net9.0; the KNI web build targets net8.0.
+        dotnet-version: |
+          8.0.x
+          9.0.x
     - name: Get version from tag
       run: |
         TAGVERSION=$(git describe --tags --abbrev=0)
@@ -35,9 +39,13 @@ jobs:
         sudo apt install wget curl p7zip-full wine64
         wget -qO- https://raw.githubusercontent.com/MonoGame/monogame.github.io/1b6099cf90c4aefe311b6d8fdbcdd55fec3770aa/website/content/public/downloads/winesetup/net9_mgfxc_wine_setup.sh | sh
     - name: Build Windows
-      run: dotnet publish ${{ env.PROJECT_PATH }} -r win-x64 -c Release --output artifacts/windows --self-contained -p:Version=${{ env.TAGVERSION }}
+      run: dotnet publish ${{ env.DESKTOP_PATH }} -r win-x64 -c Release --output artifacts/windows --self-contained -p:Version=${{ env.TAGVERSION }}
     - name: Build Linux
-      run: dotnet publish ${{ env.PROJECT_PATH }} -r linux-x64 -c Release --output artifacts/linux --self-contained -p:Version=${{ env.TAGVERSION }}
+      run: dotnet publish ${{ env.DESKTOP_PATH }} -r linux-x64 -c Release --output artifacts/linux --self-contained -p:Version=${{ env.TAGVERSION }}
+    # No wine here, unlike the desktop builds. The only content is a ttf the browser
+    # build serves as-is, so nothing runs MGCB.
+    - name: Build Web
+      run: dotnet publish ${{ env.WEB_PATH }} -c Release --output artifacts/web -p:Version=${{ env.TAGVERSION }}
     - name: Publish Windows build to itch.io
       uses: yeslayla/butler-publish-itchio-action@master
       env:
@@ -55,6 +63,18 @@ jobs:
         ITCH_GAME: ${{ env.ITCH_GAME_NAME }}
         ITCH_USER: ${{ env.ITCH_USER_NAME }}
         PACKAGE: artifacts/linux
+        VERSION: ${{ env.TAGVERSION }}
+    # itch.io marks a build playable in the browser when the channel name says
+    # html, and it serves the index.html sitting at the root of the package, so
+    # what goes up is the contents of wwwroot and nothing above it.
+    - name: Publish Web build to itch.io
+      uses: yeslayla/butler-publish-itchio-action@master
+      env:
+        BUTLER_CREDENTIALS: ${{ secrets.BUTLER_API_KEY }}
+        CHANNEL: html5
+        ITCH_GAME: ${{ env.ITCH_GAME_NAME }}
+        ITCH_USER: ${{ env.ITCH_USER_NAME }}
+        PACKAGE: artifacts/web/wwwroot
         VERSION: ${{ env.TAGVERSION }}
 
   # Assembling the bundle needs codesign, which only exists on macOS, and an

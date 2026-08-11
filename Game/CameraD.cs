@@ -22,12 +22,17 @@ namespace GameProject {
         public double Scale { get; set; } = 1.0;
         public float Rotation { get; set; } = 0f;
 
-        public Vector2 Origin {
+        /// <summary>Screen size in the units the camera works in.</summary>
+        /// The viewport counts device pixels while the camera, the pointer and every brush
+        /// radius are in CSS pixels, and those differ in a browser on a high density screen.
+        public Vector2 ViewSize {
             get {
                 var vp = _graphicsDevice.Viewport;
-                return new Vector2(vp.Width / 2f, vp.Height / 2f);
+                return new Vector2(vp.Width, vp.Height) / GameRoot.UiScale;
             }
         }
+
+        public Vector2 Origin => ViewSize / 2f;
 
         /// <summary>
         /// View matrix for camera-relative vertices produced by <see cref="WorldToView"/>.
@@ -65,11 +70,11 @@ namespace GameProject {
         /// position in that frame and the frame's pixels per unit.
         /// </summary>
         public RectangleD ViewRectIn(Vector2D camXY, double pxPerUnit) {
-            var vp = _graphicsDevice.Viewport;
+            Vector2 size = ViewSize;
             Vector2D a = ScreenToFrame(0f, 0f, camXY, pxPerUnit);
-            Vector2D b = ScreenToFrame(vp.Width, 0f, camXY, pxPerUnit);
-            Vector2D c = ScreenToFrame(0f, vp.Height, camXY, pxPerUnit);
-            Vector2D d = ScreenToFrame(vp.Width, vp.Height, camXY, pxPerUnit);
+            Vector2D b = ScreenToFrame(size.X, 0f, camXY, pxPerUnit);
+            Vector2D c = ScreenToFrame(0f, size.Y, camXY, pxPerUnit);
+            Vector2D d = ScreenToFrame(size.X, size.Y, camXY, pxPerUnit);
 
             double left = Math.Min(Math.Min(a.X, b.X), Math.Min(c.X, d.X));
             double right = Math.Max(Math.Max(a.X, b.X), Math.Max(c.X, d.X));
