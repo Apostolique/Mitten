@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-- Nothing yet!
+### Fixed
+
+- In the browser, the bottom of the canvas no longer sits behind the browser's own bars on a phone that isn't in fullscreen.
 
 ## [3.4.0] - 2026-08-10
 

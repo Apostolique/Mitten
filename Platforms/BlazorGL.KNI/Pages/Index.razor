@@ -15,6 +15,12 @@
     left: 0px;
     width:100vw;
     height:100vh;
+    /* `vh` is the viewport with the browser's own bars hidden, so on a phone that isn't in
+       fullscreen the bottom of the canvas ends up behind them and takes the button bar with
+       it. `dvh` is the part actually on screen. Second, so the pair above stays the fallback
+       for a browser that doesn't know it. */
+    width:100dvw;
+    height:100dvh;
 ">
     <canvas id="theCanvas" style="touch-action:none;"></canvas>
 </div>
