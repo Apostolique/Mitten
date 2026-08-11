@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-- Nothing yet!
+### Fixed
+
+- In the browser, the page no longer takes the shortcuts the game uses. Alt opens the color picker instead of jumping to the browser's own menu.
+- The browser build no longer shows a black screen between the loading screen and the first frame.
 
 ## [3.3.0] - 2026-08-10
 

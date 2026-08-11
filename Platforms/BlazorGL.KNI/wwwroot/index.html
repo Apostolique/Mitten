@@ -9,16 +9,46 @@
     <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet" />
     <link href="css/app.css" rel="stylesheet" />
     <link href="Mitten.styles.css" rel="stylesheet" />
+    <style>
+        #mitten-loading
+        {
+            position: fixed;
+            top: 0; right: 0; bottom: 0; left: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            /* Over the canvas, which KNI sizes and paints underneath while this is still up. */
+            z-index: 10;
+            opacity: 1;
+            transition: opacity 250ms ease-out;
+        }
+
+        .mitten-loading-inner
+        {
+            width: 9em;
+            color: #d4d4d8;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .mitten-loading-made { text-align: center; font-size: 0.85em; }
+        .mitten-loading-text { text-align: center; font-size: 1.8em; }
+    </style>
 </head>
 
 <body>
 
-    <div id="app">
-        <div id="loading" style="display: table-cell; margin: auto; width:100vw; height:100vh; vertical-align: middle; background: #000;">
-            <div style="display: block; margin: auto; width: 9em; color: #d4d4d8;font-family: 'Segoe UI', sans-serif;">
-                <div style="text-align: center; font-size: 0.85em;">Made with<br/><a href="https://github.com/kniEngine/kni"><img src="kni.png" border="0" alt="Kni"></a></div>
-                <div style="text-align: center; font-size: 1.8em;">loading&nbsp;<marquee style="width:0.9em; vertical-align: bottom;">.&nbsp;.&nbsp;.&nbsp;&nbsp;&nbsp;</marquee></div>
-            </div>
+    <div id="app"></div>
+
+    <!-- Outside `#app`, and so out of reach of Blazor, which replaces that element's contents
+         the moment the component renders. That happens well before the game has drawn
+         anything: the first tick still has to read the drawing out of IndexedDB, parse it,
+         build the tree and compile the shader. Held here until a frame is actually on the
+         canvas, so that work happens behind the loading screen instead of a black one. -->
+    <div id="mitten-loading">
+        <div class="mitten-loading-inner">
+            <div class="mitten-loading-made">Made with<br/><a href="https://github.com/kniEngine/kni"><img src="kni.png" border="0" alt="Kni"></a></div>
+            <div class="mitten-loading-text">loading&nbsp;<marquee style="width:0.9em; vertical-align: bottom;">.&nbsp;.&nbsp;.&nbsp;&nbsp;&nbsp;</marquee></div>
         </div>
     </div>
 
@@ -274,11 +304,29 @@
         window.addEventListener('mousedown', function () { mittenEnsureActive(false); }, true);
 
         var mittenSynced = false;
+        var mittenFrames = 0;
+
+        // Two frames, not one. The first tick is the one that builds the game and loads the
+        // drawing, and it returns before any of that has reached the canvas.
+        function mittenDrewAFrame()
+        {
+            if (++mittenFrames !== 2) return;
+
+            var el = document.getElementById('mitten-loading');
+            if (!el) return;
+
+            el.style.opacity = '0';
+            setTimeout(function ()
+            {
+                if (el.parentNode) el.parentNode.removeChild(el);
+            }, 300);
+        }
 
         function tickJS()
         {
             mittenSizeCanvas();
             window.theInstance.invokeMethod('TickDotNet');
+            mittenDrewAFrame();
 
             // The game window is built on the first tick, and KNI registers its focus listener
             // with it. This script registered earlier, so any focus event in between was seen
@@ -319,12 +367,44 @@
             window.requestAnimationFrame(tickJS);
         };
 
-        window.addEventListener("keydown", function(event)
+        // The browser claims most of what the game binds. Alt on its own moves focus to the
+        // browser's menu, Ctrl+S saves the page, Ctrl with a digit switches tab, F3 is find
+        // again, and the arrows and space scroll the itch.io page around the frame.
+        //
+        // Nothing in the game takes typed text, so the page keeps every key by default and
+        // hands back only the ones a player needs to get out of a stuck game. Preventing the
+        // default doesn't stop the event reaching KNI, which only listens for it.
+        //
+        // Some shortcuts arrive already uncancelable and there is nothing to be done about
+        // them: Ctrl+W, Ctrl+T and Ctrl+N belong to the browser no matter what the page says.
+        var mittenBrowserKeys = new Set(['F5', 'F11', 'F12']);
+
+        function mittenIsBrowserKey(e)
         {
-            // Prevent Arrows Keys and Spacebar scrolling the outer page
-            // when running inside an iframe. e.g: itch.io embedding.
-            if ([32, 37, 38, 39, 40].indexOf(event.keyCode) > -1)
-                event.preventDefault();
+            if (mittenBrowserKeys.has(e.key)) return true;
+
+            var ctrl = e.ctrlKey || e.metaKey;
+            var key = (e.key || '').toUpperCase();
+
+            // Reload, so a wedged game can be restarted.
+            if (ctrl && key === 'R') return true;
+            // The devtools, and the console a bug report comes from.
+            if (ctrl && e.shiftKey && (key === 'I' || key === 'J' || key === 'C')) return true;
+
+            return false;
+        }
+
+        window.addEventListener('keydown', function (e)
+        {
+            if (!mittenIsBrowserKey(e)) e.preventDefault();
+        });
+
+        // Chromium moves focus to its own UI when Alt is tapped and released, so the release
+        // has to be swallowed alongside the press. Alt only, since the rest do their damage on
+        // the way down.
+        window.addEventListener('keyup', function (e)
+        {
+            if (e.key === 'Alt') e.preventDefault();
         });
         window.addEventListener("wheel", function(event)
         {
