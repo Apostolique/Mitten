@@ -224,17 +224,23 @@ namespace GameProject {
             }
             #endif
 
+            UpdateTouchUi();
+
             if (_pickColor.Held()) {
                 if (_pickBackground.Held()) {
-                    _bgColor = _cp.UpdateInput(ViewSize);
+                    _bgColor = _cp.ColorAt(Vector2.Zero, ViewSize, Pointer.Position);
                 } else {
-                    _color = _cp.UpdateInput(ViewSize);
+                    _color = _cp.ColorAt(Vector2.Zero, ViewSize, Pointer.Position);
                 }
+            } else if (_touchPick != TouchPick.None) {
+                UpdateTouchPicker();
             } else {
                 UpdateCamera();
 
                 if (_tool == Tool.Select) {
-                    UpdateSelect();
+                    if (_touchOwned < 0) {
+                        UpdateSelect();
+                    }
                 } else if (!_isMouseDrawing && _thickness.Held()) {
                     if (_thickness.Pressed()) {
                         _radiusStart = _radius;
@@ -250,9 +256,10 @@ namespace GameProject {
                     }
                     #endif
 
-                    // The two fingers of a pinch are contacts like any other, so the stroke
-                    // has to stand down for as long as the gesture owns them.
-                    if (!_isTabletDrawing && !_pinching) {
+                    // The two fingers of a pinch and the one holding a button are contacts
+                    // like any other, so the stroke has to stand down for as long as
+                    // something else owns them.
+                    if (!_isTabletDrawing && !_pinching && _touchOwned < 0) {
                         StrokeWithMouse();
                     }
                 }
@@ -511,14 +518,18 @@ namespace GameProject {
             if (_zoomSidebarTween.Value > 0f) {
                 // Absolute zoom relative to the original top frame, as a power of ten.
                 double absLog10 = (_anchor.Level * Frame.LnK - camExp) / Math.Log(10.0);
+                Vector2 pad = TouchUiPad(view);
                 _sb.Begin(UiMatrix);
-                _sb.DrawString(_font, $"x10^{absLog10:0.0}", new Vector2(16, view.Y - 28), 20f, TWColor.White.SetAlpha(_zoomSidebarTween.Value));
+                _sb.DrawString(_font, $"x10^{absLog10:0.0}", new Vector2(16 + pad.X, view.Y - 28 - pad.Y), 20f, TWColor.White.SetAlpha(_zoomSidebarTween.Value));
                 _sb.End();
             }
 
             if (_pickColor.Held()) {
-                _cp.Draw(_font, _pickBackground.Held(), _bgColor, view);
+                _cp.Draw(_font, _pickBackground.Held(), _bgColor, Vector2.Zero, view, Pointer.Position);
+            } else if (_touchPick != TouchPick.None) {
+                DrawTouchPicker(view);
             }
+            DrawTouchUi(view);
 
             if (_showDebug) {
                 _sb.Begin(UiMatrix);

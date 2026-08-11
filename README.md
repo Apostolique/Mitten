@@ -28,6 +28,28 @@ Grab the builds <https://apos.itch.io/mitten>. It also runs in the browser there
 * One finger to draw.
 * Two fingers to zoom and pan at the same time. Pinch to zoom, and drag either finger to move the canvas. Whatever sits between your fingers stays between them.
 
+A touch screen has no keyboard and nothing to hover with, so a bar of buttons shows up on
+the first contact and covers what the shortcuts do. It runs along the bottom in portrait and
+up the left edge in landscape, and it goes away again as soon as a mouse moves. A row too
+long for the screen scrolls: drag along it to reach the rest.
+
+Every button does one thing on a tap, and holding one does its second thing where it has one.
+
+* **Undo** and **redo** repeat while you hold them.
+* **Eraser** toggles it.
+* **Size** opens a slider for the brush. The brush is drawn at its real size in the middle of
+  the canvas while you drag.
+* **Camera** opens the ten camera slots plus a save button. Tapping a slot goes to it. To
+  store the current view instead, either hold the slot, or tap save first, which lights up the
+  slots that can take it, and then tap the slot you want. Slot 0 is the one that fills itself
+  on every jump, so it takes you back where you came from.
+* **Color** opens the palette. Drag around it and the color under your finger is previewed
+  away from it, then lift to pick. Holding the button picks the background instead, which is
+  the square swatch behind the round one on it. The palette turns its families down the
+  screen's long side, so on a phone held upright they are rows rather than 17 px ribbons.
+
+The size and camera panels open above the bar, and tapping the same button again closes them.
+
 ### Camera
 
 * Middle click to drag the camera.

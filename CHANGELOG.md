@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+
+- On screen buttons for touch screens, covering undo, redo, the eraser, the brush size, the camera slots and the colors. The bar sits along the bottom in portrait and up the left edge in landscape, and hides again when a mouse moves.
+
+### Changed
+
+- The color picker lays its families along the screen's long side, so the swatches stay wide enough to hit on a screen taller than it is wide.
+
 ### Fixed
 
 - In the browser, the bottom of the canvas no longer sits behind the browser's own bars on a phone that isn't in fullscreen.
