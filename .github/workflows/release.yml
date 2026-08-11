@@ -16,9 +16,6 @@ jobs:
 
     runs-on: ubuntu-24.04
 
-    env:
-      MGFXC_WINE_PATH: /home/runner/.winemonogame
-
     steps:
     - uses: actions/checkout@v4
     - name: Setup .NET Core
@@ -32,18 +29,10 @@ jobs:
       run: |
         TAGVERSION=$(git describe --tags --abbrev=0)
         echo "TAGVERSION=${TAGVERSION:1}" >> $GITHUB_ENV
-    - name: Setup Wine
-      run: |
-        sudo add-apt-repository universe
-        sudo apt update
-        sudo apt install wget curl p7zip-full wine64
-        wget -qO- https://raw.githubusercontent.com/MonoGame/monogame.github.io/1b6099cf90c4aefe311b6d8fdbcdd55fec3770aa/website/content/public/downloads/winesetup/net9_mgfxc_wine_setup.sh | sh
     - name: Build Windows
       run: dotnet publish ${{ env.DESKTOP_PATH }} -r win-x64 -c Release --output artifacts/windows --self-contained -p:Version=${{ env.TAGVERSION }}
     - name: Build Linux
       run: dotnet publish ${{ env.DESKTOP_PATH }} -r linux-x64 -c Release --output artifacts/linux --self-contained -p:Version=${{ env.TAGVERSION }}
-    # No wine here, unlike the desktop builds. The only content is a ttf the browser
-    # build serves as-is, so nothing runs MGCB.
     - name: Build Web
       run: dotnet publish ${{ env.WEB_PATH }} -c Release --output artifacts/web -p:Version=${{ env.TAGVERSION }}
     - name: Publish Windows build to itch.io
