@@ -1272,12 +1272,18 @@ namespace GameProject {
                 _coverage.SeedFrom(src, _anchor, xy, scale);
             }
         }
+        /// <summary>
+        /// Rebases every exponent held across frames. One left out comes back a whole band
+        /// wrong the moment the camera crosses one, and the pinch that reads it pushes the
+        /// camera across the next one, over and over.
+        /// </summary>
         private void ShiftExp(double delta) {
             _exp.A += delta;
             _exp.B += delta;
             _targetExp += delta;
             _preservedExp += delta;
             _expStart += delta;
+            _pinchStartExp += delta;
         }
 
         /// <summary>

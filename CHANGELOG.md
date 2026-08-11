@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+- Nothing yet!
+
+## [3.5.0] - 2026-08-10
+
 ### Added
 
 - On screen buttons for touch screens, covering undo, redo, the eraser, the brush size, the camera slots and the colors. The bar sits along the bottom in portrait and up the left edge in landscape, and hides again when a mouse moves.
@@ -16,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 
+- A pinch no longer runs away, zooming further and further on its own once it has zoomed past a certain point.
 - In the browser, the bottom of the canvas no longer sits behind the browser's own bars on a phone that isn't in fullscreen.
 
 ## [3.4.0] - 2026-08-10
@@ -410,7 +415,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Undo and redo (disabled while drawing).
 - Saving drawings to disk.
 
-[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.4.0...HEAD
+[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.5.0...HEAD
+[3.5.0]: https://github.com/Apostolique/Mitten/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/Apostolique/Mitten/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/Apostolique/Mitten/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/Apostolique/Mitten/compare/v3.1.2...v3.2.0
