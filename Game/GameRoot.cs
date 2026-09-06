@@ -15,6 +15,7 @@ using Microsoft.Xna.Framework.Input.Touch;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.IO;
 using System.Collections;
 
@@ -390,6 +391,8 @@ namespace GameProject {
 
             _sb.Begin(_camera.View * UiMatrix);
             _pathCount = 0;
+            float minStep = 0.5f / UiScale;
+            _minStepSq = minStep * minStep;
 
             var fgColor = _color;
             if (_tool == Tool.Erase) {
@@ -406,7 +409,7 @@ namespace GameProject {
             // inside stacks up fast near a deep cell corner); fold them into the
             // occlusion cutoff so everything underneath skips the fill.
             if (_emitFullCoverId > fullCoverId) fullCoverId = _emitFullCoverId;
-            _drawables.Sort(static (x, y) => x.Id.CompareTo(y.Id));
+            SortDrawables();
             // A selection drag previews in view space: the trees are only touched on
             // release, when the whole gesture commits as one MoveOp/ScaleOp.
             Vector2 moveDelta = _selGesture == SelGesture.Move
@@ -863,6 +866,10 @@ namespace GameProject {
         /// overlap. A point can carry its own radius, so a pressure-varying stroke stays
         /// one path instead of breaking at every segment. Anything that breaks the chain —
         /// a gap, a color change, an impostor dot — ends the path and starts a new one.
+        ///
+        /// A stroke recorded up close holds far more points than the screen it is seen from
+        /// has pixels to place them in, so a point landing within half a pixel of the last
+        /// one drawn is held back rather than handed to the path.
         /// </summary>
         private void StrokeSegment(Vector2 a, Vector2 b, float radius, Color c) {
             if (!_usePaths) {
@@ -880,14 +887,16 @@ namespace GameProject {
                 return;
             }
             if (_pathOpen && a == _pathEnd && c == _pathColor) {
-                // Only a point that leaves the radius the path opened with has to carry
-                // one. Carrying one is what moves the path onto the tapered geometry, so
-                // a pen reporting no pressure would otherwise pay for the taper on every
-                // stroke and have the library scan the radii back off again.
-                if (radius == _pathRadius) {
-                    _sb.PathTo(b);
+                // The stroke keeps its own end, so the step only decides what the path is
+                // told about. The widest radius of a held run is the one that goes in, since
+                // a thinner point standing in for a thicker one pinches the stroke.
+                float widest = MathF.Max(radius, _heldRadius);
+                if (Vector2.DistanceSquared(b, _pathDrawn) < _minStepSq) {
+                    _held = true;
+                    _heldPoint = b;
+                    _heldRadius = widest;
                 } else {
-                    _sb.PathTo(b, radius);
+                    PathPoint(b, widest);
                 }
             } else {
                 EndStroke();
@@ -897,9 +906,85 @@ namespace GameProject {
                 _pathOpen = true;
                 _pathColor = c;
                 _pathRadius = radius;
+                _pathDrawn = b;
+                _held = false;
+                _heldRadius = 0f;
                 _pathCount++;
             }
             _pathEnd = b;
+        }
+
+        private void PathPoint(Vector2 p, float radius) {
+            // Only a point that leaves the radius the path opened with has to carry
+            // one. Carrying one is what moves the path onto the tapered geometry, so
+            // a pen reporting no pressure would otherwise pay for the taper on every
+            // stroke and have the library scan the radii back off again.
+            if (radius == _pathRadius) {
+                _sb.PathTo(p);
+            } else {
+                _sb.PathTo(p, radius);
+            }
+            _pathDrawn = p;
+            _held = false;
+            _heldRadius = 0f;
+        }
+
+        /// <summary>
+        /// Puts the drawables back in id order, which is the order they are painted in. The
+        /// trees hand them back in whatever order they hold them, so this is what keeps a
+        /// later stroke on top of an earlier one.
+        /// </summary>
+        /// <remarks>
+        /// A radix pass by id, a byte at a time, since a comparison sort spends its time on
+        /// 32k drawables telling ids apart that a bucket already separates. Ids count up from
+        /// 0, so the high bytes every drawable shares are skipped and a drawing under 65536
+        /// lines sorts in two passes.
+        /// </remarks>
+        private void SortDrawables() {
+            int n = _drawables.Count;
+            if (n < 2) return;
+
+            Span<Drawable> src = CollectionsMarshal.AsSpan(_drawables);
+            int max = 0;
+            for (int i = 0; i < n; i++) {
+                if (src[i].Id > max) max = src[i].Id;
+            }
+
+            if (_sortScratch.Length < n) _sortScratch = new Drawable[n];
+            Span<Drawable> dst = _sortScratch.AsSpan(0, n);
+            Span<int> counts = stackalloc int[256];
+            bool inScratch = false;
+
+            int passes = 1;
+            while (passes < 4 && (max >> (passes * 8)) != 0) passes++;
+
+            for (int pass = 0; pass < passes; pass++) {
+                int shift = pass * 8;
+                counts.Clear();
+                for (int i = 0; i < n; i++) {
+                    counts[(src[i].Id >> shift) & 0xFF]++;
+                }
+                // A byte the whole span agrees on leaves the order it already has.
+                if (counts[(src[0].Id >> shift) & 0xFF] == n) continue;
+
+                int start = 0;
+                for (int i = 0; i < 256; i++) {
+                    int c = counts[i];
+                    counts[i] = start;
+                    start += c;
+                }
+                for (int i = 0; i < n; i++) {
+                    dst[counts[(src[i].Id >> shift) & 0xFF]++] = src[i];
+                }
+
+                Span<Drawable> swap = src;
+                src = dst;
+                dst = swap;
+                inScratch = !inScratch;
+            }
+
+            // An odd number of passes leaves the result in the scratch buffer.
+            if (inScratch) src.CopyTo(dst);
         }
 
         /// <summary>
@@ -909,6 +994,9 @@ namespace GameProject {
         /// </summary>
         private void EndStroke() {
             if (!_pathOpen) return;
+            // Where a stroke ends is part of its shape, so its last point goes in even when
+            // it sits inside the step.
+            if (_held) PathPoint(_heldPoint, _heldRadius);
             _pathOpen = false;
             _sb.EndPath();
         }
@@ -993,8 +1081,19 @@ namespace GameProject {
             // Strokes anchored here are at most one cell (K units) across: below half
             // a pixel none of them can be visible.
             if (ownTree && f.Tree.Count > 0 && ppu * Frame.K >= 0.5) {
-                foreach (Line l in f.Tree.Query(view)) {
-                    EmitLine(l, ix, iy, fx, fy, ppu);
+                // A tree that fits inside the view has every stroke on screen, so the walk
+                // that would test each one against the rect it is already inside gives way
+                // to a straight pass over the tree's slots. Zoomed out over a drawing this
+                // is most of what there is to draw.
+                if (f.Tree.Bounds is RectangleD b &&
+                    b.X >= view.X && b.Y >= view.Y && b.Right <= view.Right && b.Bottom <= view.Bottom) {
+                    foreach (Line l in f.Tree.All()) {
+                        EmitLine(l, ix, iy, fx, fy, ppu);
+                    }
+                } else {
+                    foreach (Line l in f.Tree.Query(view)) {
+                        EmitLine(l, ix, iy, fx, fy, ppu);
+                    }
                 }
             }
 
@@ -1074,11 +1173,17 @@ namespace GameProject {
             double dx = bx - ax, dy = by - ay;
             double d2 = dx * dx + dy * dy;
             double keep = radius + fill + 64.0;
-            if (d2 > 0.0) {
+            double keep2 = keep * keep;
+            double a2 = ax * ax + ay * ay;
+            double b2 = bx * bx + by * by;
+            // Both ends within reach leave nothing to trim, which is the case for every
+            // stroke drawn at a size worth looking at.
+            if (a2 > keep2 || b2 > keep2) {
+                if (d2 <= 0.0) return;
                 // Trim to the sub-segment within reach of the screen. Cutting a capsule
                 // at an interior point only sheds fill that was off screen anyway.
                 double m = -(ax * dx + ay * dy) / d2;
-                double c0 = (ax * ax + ay * ay - keep * keep) / d2;
+                double c0 = (a2 - keep2) / d2;
                 double disc = m * m - c0;
                 if (disc <= 0.0) return;
                 double sq = Math.Sqrt(disc);
@@ -1087,19 +1192,20 @@ namespace GameProject {
                 if (t0 >= t1) return;
                 (bx, by) = (ax + dx * t1, ay + dy * t1);
                 (ax, ay) = (ax + dx * t0, ay + dy * t0);
-            } else if (ax * ax + ay * ay > keep * keep) {
-                return;
             }
 
             _drawables.Add(new Drawable(l.Id, new Vector2((float)ax, (float)ay), new Vector2((float)bx, (float)by), (float)radius, l.Color));
 
             // The capsule occludes the whole screen when the origin sits deeper
-            // inside it than the screen radius.
+            // inside it than the screen radius, which takes a stroke at least that wide
+            // to begin with. Everything thinner skips the square root.
+            if (radius < _screenRadius || l.Id <= _emitFullCoverId) return;
+
             double tdx = bx - ax, tdy = by - ay;
             double td2 = tdx * tdx + tdy * tdy;
             double tt = td2 > 0.0 ? Math.Clamp(-(ax * tdx + ay * tdy) / td2, 0.0, 1.0) : 0.0;
             double ex = ax + tdx * tt, ey = ay + tdy * tt;
-            if (radius - Math.Sqrt(ex * ex + ey * ey) >= _screenRadius && l.Id > _emitFullCoverId) {
+            if (radius - Math.Sqrt(ex * ex + ey * ey) >= _screenRadius) {
                 _emitFullCoverId = l.Id;
             }
         }
@@ -2419,6 +2525,7 @@ namespace GameProject {
         // Live lines of each stroke, keyed by StrokeId. Kept in sync with _lines.
         Dictionary<int, List<Line>> _strokes = null!;
         readonly List<Drawable> _drawables = [];
+        Drawable[] _sortScratch = [];
         float _screenRadius;
         readonly CoverageStack _coverage = new();
         (int First, int Last) _group = (0, 0);
@@ -2725,6 +2832,11 @@ namespace GameProject {
         bool _usePaths = true;
         bool _pathOpen = false;
         Vector2 _pathEnd;
+        Vector2 _pathDrawn;
+        Vector2 _heldPoint;
+        float _heldRadius;
+        bool _held;
+        float _minStepSq;
         Color _pathColor;
         float _pathRadius;
         int _pathCount = 0;

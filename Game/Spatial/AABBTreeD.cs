@@ -248,6 +248,17 @@ namespace GameProject {
             return new QueryRect(this, aabb);
         }
         /// <summary>
+        /// Every item, in the order the slots hold them.
+        /// </summary>
+        /// <remarks>
+        /// For a caller that already knows the whole tree answers its query. Walking the
+        /// nodes to test each item against a rect it is known to be inside costs a pointer
+        /// chase per item, while this reads the slots in order.
+        /// </remarks>
+        public LeafScan All() {
+            return new LeafScan(this);
+        }
+        /// <summary>
         /// Mostly used for debugging. It returns all the `aabb` in the tree including parent nodes.
         /// </summary>
         /// <param name="aabb">The aabb to query.</param>
@@ -466,8 +477,10 @@ namespace GameProject {
                 // Link up new freelist and attach it to pre-existing freelist.
                 for (int i = 0; i < _tree.NodeCapacity - 1; i++) {
                     _tree.Nodes[_tree.NodeCapacity + i].IndexA = i + _tree.NodeCapacity + 1;
+                    _tree.Nodes[_tree.NodeCapacity + i].Height = -1;
                 }
                 _tree.Nodes[newCapacity - 1].IndexA = AABB_TREE_NULL_NODE_INDEX;
+                _tree.Nodes[newCapacity - 1].Height = -1;
                 _tree.Freelist = _tree.NodeCapacity;
                 newIndex = _tree.Freelist;
                 _tree.NodeCapacity = newCapacity;
@@ -488,6 +501,7 @@ namespace GameProject {
 
         private void SPushFreelist(int index) {
             _tree.Nodes[index].IndexA = _tree.Freelist;
+            _tree.Nodes[index].Height = -1;
             _tree.Items[index] = default!;
             _tree.Freelist = index;
             _tree.NodeCount--;
@@ -570,8 +584,14 @@ namespace GameProject {
                 NodeCount = 0;
                 Count = 0;
 
-                for (int i = 0; i < Nodes.Length - 1; i++) Nodes[i].IndexA = i + 1;
+                // A free slot carries a height of -1, which is what tells it apart from a
+                // leaf (0) and a branch (1 and up) in a straight pass over the slots.
+                for (int i = 0; i < Nodes.Length - 1; i++) {
+                    Nodes[i].IndexA = i + 1;
+                    Nodes[i].Height = -1;
+                }
                 Nodes[Nodes.Length - 1].IndexA = AABB_TREE_NULL_NODE_INDEX;
+                Nodes[Nodes.Length - 1].Height = -1;
             }
 
             public struct NodeT {
@@ -657,6 +677,65 @@ namespace GameProject {
             private double[] _costs = costs;
         }
 
+        /// <summary>Walks the slots in order, handing back the item each leaf holds.</summary>
+        public struct LeafScan : IEnumerator<T>, IEnumerable<T> {
+            public LeafScan(AABBTreeD<T> at) {
+                _at = at;
+                _index = -1;
+                _version = at._version;
+                _current = default;
+            }
+
+            public readonly T Current => _current!;
+
+            readonly object IEnumerator.Current {
+                get {
+                    if (_index < 0 || _current == null) {
+                        throw new InvalidOperationException("Enumeration has either not started or has already finished.");
+                    }
+                    return _current!;
+                }
+            }
+
+            public readonly void Dispose() { }
+
+            public bool MoveNext() {
+                if (_version != _at._version) {
+                    throw new InvalidOperationException("Collection was modified after the enumerator was instantiated.");
+                }
+
+                AABBTreeT.NodeT[] nodes = _at._tree.Nodes;
+                int capacity = _at._tree.NodeCapacity;
+                for (int i = _index + 1; i < capacity; i++) {
+                    if (nodes[i].Height != 0) continue;
+                    _index = i;
+                    _current = _at._tree.Items[i];
+                    return true;
+                }
+                _index = capacity;
+                _current = default;
+                return false;
+            }
+
+            public void Reset() {
+                if (_version != _at._version) {
+                    throw new InvalidOperationException("Collection was modified after the enumerator was instantiated.");
+                }
+
+                _index = -1;
+                _current = default;
+            }
+
+            // Returned by value so a `foreach` binds here instead of to the interface.
+            public readonly LeafScan GetEnumerator() => this;
+            readonly IEnumerator<T> IEnumerable<T>.GetEnumerator() => this;
+            readonly IEnumerator IEnumerable.GetEnumerator() => this;
+
+            private readonly AABBTreeD<T> _at;
+            private int _index;
+            private T? _current;
+            private readonly int _version;
+        }
         private struct QueryRect : IEnumerator<T>, IEnumerable<T> {
             public QueryRect(AABBTreeD<T> at, RectangleD aabb) {
                 _at = at;
