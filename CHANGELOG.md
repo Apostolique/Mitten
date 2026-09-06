@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - Nothing yet!
 
+## [3.5.1] - 2026-09-06
+
+### Fixed
+
+- Long strokes no longer come out with wedges and slabs bitten out of them.
+
 ## [3.5.0] - 2026-08-10
 
 ### Added
