@@ -204,8 +204,11 @@
                 canvas.height = bh;
             }
             // Without an explicit CSS size the element takes its width attribute as CSS pixels,
-            // which would blow it up to three times the screen.
-            if (canvas.style.width !== cssW + 'px')
+            // which would blow it up to three times the screen. Both dimensions are checked:
+            // the browser's own bars move the height while the width holds, and a height left
+            // behind puts the element and its backing store at different sizes, which offsets
+            // the pointer and leaves a strip of page the canvas never covers.
+            if (canvas.style.width !== cssW + 'px' || canvas.style.height !== cssH + 'px')
             {
                 canvas.style.width = cssW + 'px';
                 canvas.style.height = cssH + 'px';
@@ -231,26 +234,109 @@
         // handful of long straight segments.
         var mittenPenQueue = [];
         var mittenSawPen = false;
+        var mittenPenDown = false;
+
+        // Which device the brush follows. A pen leaving proximity hands the system cursor back
+        // to the mouse, and the browser reports that as a `pointermove` at wherever the mouse
+        // has been parked all along. That is indistinguishable from the player reaching for the
+        // mouse except in one way: the position hasn't changed. So only a mouse that moved
+        // somewhere new takes the brush back.
+        var mittenPenOwns = false;
+        var mittenMouseAt = '';
+        var mittenPenX = 0, mittenPenY = 0, mittenPenPressure = 0;
+
+        window.addEventListener('pointermove', function (e)
+        {
+            if (e.pointerType !== 'mouse') return;
+
+            var at = e.clientX + ',' + e.clientY;
+            if (mittenMouseAt !== '' && at !== mittenMouseAt) mittenPenOwns = false;
+            mittenMouseAt = at;
+        }, true);
+
+        window.mittenPenOwnsCursor = function () { return mittenPenOwns; };
+
+        // A pen contact reaches the page three times over: as the pointer events above, as
+        // compatibility mouse events, and as a `touchstart` that Windows Ink raises even where
+        // `maxTouchPoints` is 0. KNI feeds the last two into its mouse and touch state, and
+        // `_draw` takes either as a press, so whichever one wins the frame sends the stroke
+        // down the mouse path at one width, starting from a `Pointer.Position` the browser
+        // stops updating for as long as the pen holds capture.
+        //
+        // Canceling `pointerdown` drops the mouse stream. Touch needs the events swallowed
+        // outright, and `pointerdown` always arrives before `touchstart`, so the flag is set by
+        // the time the first one lands. Capture on `window`, which runs ahead of the listeners
+        // KNI bubbles to it. A finger held down while the pen draws goes with them, which is
+        // the palm rejection a drawing app wants anyway.
+        var mittenTouchFromPen = false;
+
+        function mittenSwallowTouch(e)
+        {
+            // Decided once, at `touchstart`, and held for the rest of the sequence. The pen's
+            // `pointerup` lands before its `touchend`, so a per-event check would clear the
+            // flag with the sequence still going and hand KNI the tail of it.
+            if (e.type === 'touchstart' && mittenPenDown) mittenTouchFromPen = true;
+            if (!mittenTouchFromPen) return;
+
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            if (e.touches.length === 0) mittenTouchFromPen = false;
+        }
+
+        ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(function (t)
+        {
+            window.addEventListener(t, mittenSwallowTouch, true);
+        });
 
         function mittenPen(e)
         {
             if (e.pointerType !== 'pen') return;
             mittenSawPen = true;
+            mittenPenOwns = true;
 
             var points = (e.type === 'pointermove' && e.getCoalescedEvents)
                 ? e.getCoalescedEvents() : [e];
             var lifted = e.type === 'pointerup' || e.type === 'pointercancel';
 
+            if (e.type === 'pointerdown')
+            {
+                mittenPenDown = true;
+                e.preventDefault();
+                // The activation a `mousedown` would have raised, since a pen-only player now
+                // sends nothing else.
+                mittenEnsureActive(false);
+            }
+            else if (lifted)
+            {
+                mittenPenDown = false;
+            }
+
+            // Relative to the canvas, since that is what the game's coordinates start from.
+            // The canvas itself rather than `e.target`, which is only the same element while
+            // the contact lands inside it.
+            var canvas = document.getElementById('theCanvas');
+            var box = canvas ? canvas.getBoundingClientRect() : { left: 0, top: 0 };
+
             for (var i = 0; i < points.length; i++)
             {
                 var p = points[i];
-                // Relative to the canvas, since that is what the game's coordinates start from.
-                var box = e.target.getBoundingClientRect ? e.target.getBoundingClientRect() : { left: 0, top: 0 };
                 mittenPenQueue.push(p.clientX - box.left, p.clientY - box.top, lifted ? 0 : p.pressure);
             }
+
+            mittenPenX = e.clientX - box.left;
+            mittenPenY = e.clientY - box.top;
+            mittenPenPressure = lifted ? 0 : e.pressure;
         }
 
         window.mittenPenSeen = function () { return mittenSawPen; };
+
+        // Where the pen is now, kept apart from the queue so a frame that is sizing the brush
+        // or picking a color can read it without eating the points a stroke is built from.
+        window.mittenPenState = function ()
+        {
+            return [mittenPenX, mittenPenY, mittenPenPressure];
+        };
 
         window.mittenDrainPen = function ()
         {
@@ -358,10 +444,17 @@
             var canvas = document.getElementById('theCanvas');
             canvas.addEventListener("contextmenu", e => e.preventDefault());
 
-            canvas.addEventListener('pointerdown', mittenPen);
-            canvas.addEventListener('pointermove', mittenPen);
-            canvas.addEventListener('pointerup', mittenPen);
-            canvas.addEventListener('pointercancel', mittenPen);
+            // On the window and in the capture phase: a pen that lands a pixel outside the
+            // canvas is still drawing, and the flag has to be set before the touch listeners
+            // registered above run.
+            window.addEventListener('pointerdown', mittenPen, true);
+            window.addEventListener('pointermove', mittenPen, true);
+            window.addEventListener('pointerup', mittenPen, true);
+            window.addEventListener('pointercancel', mittenPen, true);
+            window.addEventListener('lostpointercapture', function (e)
+            {
+                if (e.pointerType === 'pen') mittenPenDown = false;
+            }, true);
 
             // begin game loop
             window.requestAnimationFrame(tickJS);

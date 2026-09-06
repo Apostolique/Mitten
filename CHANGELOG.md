@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - Nothing yet!
 
+## [3.5.3] - 2026-09-06
+
+### Fixed
+
+- In the browser, pen strokes no longer come out at one width every so often, and no longer start from a point the pen was never at.
+- In the browser, the brush no longer lags behind the pen or flickers between the pen and the mouse. It follows whichever of the two was last used.
+- In the browser, the canvas now follows the window when only its height changes, so it covers the whole page and the pointer lands where the pen is.
+- In the browser, Control + Shift + drag sizes the brush with a pen, where it only answered to a mouse before.
+
 ## [3.5.2] - 2026-09-06
 
 ### Fixed
@@ -427,7 +436,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Undo and redo (disabled while drawing).
 - Saving drawings to disk.
 
-[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.5.2...HEAD
+[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.5.3...HEAD
+[3.5.3]: https://github.com/Apostolique/Mitten/compare/v3.5.2...v3.5.3
 [3.5.2]: https://github.com/Apostolique/Mitten/compare/v3.5.1...v3.5.2
 [3.5.1]: https://github.com/Apostolique/Mitten/compare/v3.5.0...v3.5.1
 [3.5.0]: https://github.com/Apostolique/Mitten/compare/v3.4.0...v3.5.0

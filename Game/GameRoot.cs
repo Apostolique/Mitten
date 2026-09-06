@@ -56,6 +56,17 @@ namespace GameProject {
         /// corner of its own canvas.
         public static Point? BackBuffer;
 
+        /// <summary>Where the pointer is on screen. A pen in contact stops moving
+        /// `Pointer.Position`, so it answers for itself while it owns the cursor.</summary>
+        private Vector2 PointerScreen {
+            get {
+                #if BLAZORGL
+                if (_tabletIsValid && Pen!.OwnsCursor) return _penScreen;
+                #endif
+                return Pointer.Position;
+            }
+        }
+
         /// <summary>Screen size in the units the game lays out in.</summary>
         public Vector2 ViewSize =>
             new Vector2(GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height) / UiScale;
@@ -188,7 +199,22 @@ namespace GameProject {
             // A player can pick a pen up at any point, and nothing announces it, so this asks
             // every frame rather than once at startup.
             _tabletIsValid = Pen is not null && Pen.IsValid;
+            if (_tabletIsValid) {
+                var pen = Pen!.State;
+                _penScreen = new Vector2(pen.X, pen.Y);
+                _penContact = pen.Pressure > 0f;
+            }
             #endif
+
+            // A pen presses no mouse button in a browser, so its own contact stands in for one.
+            // Settled here rather than in the branch below, since the press is an edge and the
+            // frames that miss the branch still have to see it go by.
+            _thicknessHeld = _thickness.Held();
+            #if BLAZORGL
+            _thicknessHeld = _thicknessHeld || (_thicknessMods.Held() && _penContact);
+            #endif
+            bool thicknessPressed = _thicknessHeld && !_thicknessHeldLast;
+            _thicknessHeldLast = _thicknessHeld;
 
             InputHelper.UpdateSetup(gameTime);
             TweenHelper.UpdateSetup(gameTime);
@@ -242,12 +268,12 @@ namespace GameProject {
                     if (_touchOwned < 0) {
                         UpdateSelect();
                     }
-                } else if (!_isMouseDrawing && _thickness.Held()) {
-                    if (_thickness.Pressed()) {
+                } else if (!_isMouseDrawing && _thicknessHeld) {
+                    if (thicknessPressed) {
                         _radiusStart = _radius;
-                        _thicknessStart = Pointer.Position;
+                        _thicknessStart = PointerScreen;
                     }
-                    var diffX = (Pointer.Position.X - _thicknessStart.X) / 2f;
+                    var diffX = (PointerScreen.X - _thicknessStart.X) / 2f;
                     _radius = MathHelper.Clamp(_radiusStart + diffX, 0.5f, 1000f);
                 } else {
                     #if TABLET
@@ -476,7 +502,7 @@ namespace GameProject {
             // follows a mouse or a finger that is actually drawing.
             if (_tool != Tool.Select &&
                 (Pointer.Source == PointerSource.Mouse || _isMouseDrawing || _isTabletDrawing)) {
-                if (_thickness.Held()) {
+                if (_thicknessHeld) {
                     var thicknessView = _camera.WorldToView(_camera.ScreenToWorld(_thicknessStart));
                     _sb.FillCircle(thicknessView, _radius, fgColor);
                     if (_tool == Tool.Erase) {
@@ -552,9 +578,12 @@ namespace GameProject {
             _data.FlushDataPackets(100);
             #elif SDLLINUX
             _xiTablet.Flush();
+            #else
+            // The page queues points whether the game is drawing or not, so a frame spent
+            // sizing the brush or picking a color drops them rather than letting them pile up
+            // into a stroke that lands whenever the modifier comes back up.
+            Pen!.GetPackets();
             #endif
-            // The browser has nothing to pump: the page pushes each point into a queue as it
-            // arrives and `GetPackets` empties it.
         }
 
         private void StrokeWithTablet(double totalTime) {
@@ -592,6 +621,9 @@ namespace GameProject {
                     currentCursor = _camera.ScreenToWorld(x, y);
                     _lastTablet = currentCursor;
                     _lastPressure = _tabletPressure;
+                    #if BLAZORGL
+                    _penHasPosition = true;
+                    #endif
 
                     if (totalTime - _maxLastTime < 300) {
                         _maxPressure = MathF.Max(_tabletPressure, _maxPressure);
@@ -634,6 +666,15 @@ namespace GameProject {
 
                 ranOnce = true;
             } while (true);
+
+            #if BLAZORGL
+            // A pen sends no mouse events of its own, so `Pointer.Position` holds whatever the
+            // last hover left there and `UpdateCamera` puts the brush back on it every frame.
+            // The pen's own position takes over, and it holds through the frames that drain no
+            // packet rather than snapping back and flickering between the two. The page decides
+            // when a mouse takes the brush back, since it can see which device moved.
+            if (_penHasPosition && Pen!.OwnsCursor) _mouseWorld = _lastTablet;
+            #endif
         }
         #endif
 
@@ -2571,6 +2612,19 @@ namespace GameProject {
                 ),
                 new MouseCondition(MouseButton.LeftButton)
             );
+        #if BLAZORGL
+        ICondition _thicknessMods =
+            new AllCondition(
+                new AnyCondition(
+                    new KeyboardCondition(Keys.LeftControl),
+                    new KeyboardCondition(Keys.RightControl)
+                ),
+                new AnyCondition(
+                    new KeyboardCondition(Keys.LeftShift),
+                    new KeyboardCondition(Keys.RightShift)
+                )
+            );
+        #endif
         ICondition _dragZoom =
             new AllCondition(
                 new AnyCondition(
@@ -2865,6 +2919,14 @@ namespace GameProject {
         Vector2D _lastTablet = Vector2D.Zero;
         float _lastPressure = 0f;
         #endif
+        #if BLAZORGL
+        /// <summary>Whether `_lastTablet` holds a position the pen actually reported.</summary>
+        bool _penHasPosition = false;
+        Vector2 _penScreen = Vector2.Zero;
+        bool _penContact = false;
+        #endif
+        bool _thicknessHeld = false;
+        bool _thicknessHeldLast = false;
 
         float _tabletPressure = 0f;
 

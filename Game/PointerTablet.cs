@@ -27,6 +27,20 @@ namespace GameProject {
         /// what sends the game down the mouse path instead.</summary>
         public bool IsValid => _js.Invoke<bool>("mittenPenSeen");
 
+        /// <summary>Whether the brush should follow the pen rather than the mouse. A pen
+        /// leaving proximity puts the system cursor back on the mouse, which the browser
+        /// reports as a mouse move to a place the mouse has sat all along.</summary>
+        public bool OwnsCursor => _js.Invoke<bool>("mittenPenOwnsCursor");
+
+        /// <summary>Where the pen is and how hard it is pressed, without taking anything off
+        /// the queue a stroke is built from.</summary>
+        public (float X, float Y, float Pressure) State {
+            get {
+                float[] s = _js.Invoke<float[]>("mittenPenState");
+                return (s[0], s[1], s[2]);
+            }
+        }
+
         /// <summary>Takes everything queued since the last call, as flat (x, y, pressure)
         /// triples.</summary>
         public IEnumerator<(float, float, float)> GetPackets() {
