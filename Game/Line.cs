@@ -6,12 +6,26 @@ namespace GameProject {
     /// One renderable primitive in camera-relative pixels: a capsule when A != B, a
     /// disc when A == B. Sorted by Id to preserve paint order.
     /// </summary>
-    public readonly struct Drawable(int id, Vector2 a, Vector2 b, float radius, Color color) {
-        public readonly int Id = id;
-        public readonly Vector2 A = a;
-        public readonly Vector2 B = b;
-        public readonly float Radius = radius;
-        public readonly Color Color = color;
+    public readonly struct Drawable {
+        /// <summary>One of a single width.</summary>
+        public Drawable(int id, Vector2 a, Vector2 b, float radius, Color color)
+            : this(id, a, b, radius, radius, color) { }
+        /// <summary>One that tapers, radiusA wide at A and radius wide at B.</summary>
+        public Drawable(int id, Vector2 a, Vector2 b, float radiusA, float radius, Color color) {
+            Id = id;
+            A = a;
+            B = b;
+            RadiusA = radiusA;
+            Radius = radius;
+            Color = color;
+        }
+
+        public readonly int Id;
+        public readonly Vector2 A;
+        public readonly Vector2 B;
+        public readonly float RadiusA;
+        public readonly float Radius;
+        public readonly Color Color;
     }
 
     /// <summary>
@@ -24,6 +38,7 @@ namespace GameProject {
             A = a;
             B = b;
             Radius = radius;
+            RadiusA = radius;
             Color = c;
             AABB = ComputeAABB();
         }
@@ -36,7 +51,17 @@ namespace GameProject {
         public Frame Node { get; set; } = null!;
         public Vector2D A { get; set; }
         public Vector2D B { get; set; }
+        /// <summary>The half width at <see cref="B"/>. A segment only carries its own
+        /// end's width, so the width it starts at is <see cref="RadiusA"/>.</summary>
         public double Radius { get; set; }
+        /// <summary>
+        /// The half width at <see cref="A"/>, which is the radius of the segment before
+        /// this one in the same stroke. A segment that starts a stroke, or whose
+        /// predecessor was erased, recolored or anchored to another frame, opens at its
+        /// own. Derived from the neighbours rather than saved: GameRoot's AttachLine and
+        /// DetachLine keep it current.
+        /// </summary>
+        public double RadiusA { get; set; }
         public Color Color { get; set; }
 
         public RectangleD AABB { get; set; }

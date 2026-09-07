@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - Nothing yet!
 
+## [3.5.4] - 2026-09-07
+
+### Fixed
+
+- In the browser, panning and zooming with a pen no longer jump. They follow the pen rather than the last place the mouse was.
+- In the browser, the middle button no longer raises the autoscroll cursor or scrolls the page behind the game.
+- Zooming into a stroke no longer shows a step bitten out of its edge where the stroke changes width.
+- Zooming far past a stroke's width no longer steps its edge sideways where the stroke tapers.
+- Zooming into a stroke no longer steps part of its edge sideways once the rest of the stroke has left the screen.
+
 ## [3.5.3] - 2026-09-06
 
 ### Fixed
@@ -436,7 +446,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Undo and redo (disabled while drawing).
 - Saving drawings to disk.
 
-[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.5.3...HEAD
+[Unreleased]: https://github.com/Apostolique/Mitten/compare/v3.5.4...HEAD
+[3.5.4]: https://github.com/Apostolique/Mitten/compare/v3.5.3...v3.5.4
 [3.5.3]: https://github.com/Apostolique/Mitten/compare/v3.5.2...v3.5.3
 [3.5.2]: https://github.com/Apostolique/Mitten/compare/v3.5.1...v3.5.2
 [3.5.1]: https://github.com/Apostolique/Mitten/compare/v3.5.0...v3.5.1

@@ -42,7 +42,7 @@
     <PackageReference Include="nkast.Xna.Framework.Content.Pipeline.Builder" Version="4.2.9001" />
 
     <PackageReference Include="Apos.Input.KNI" Version="3.0.0" />
-    <PackageReference Include="Apos.Shapes.KNI" Version="0.8.3" />
+    <PackageReference Include="Apos.Shapes.KNI" Version="0.8.5" />
     <PackageReference Include="Apos.Tweens.KNI" Version="0.2.0" />
   </ItemGroup>
 

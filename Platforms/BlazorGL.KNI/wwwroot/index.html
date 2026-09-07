@@ -387,7 +387,16 @@
         // Capture, so the game is active before KNI's own handler queues the contact. Not forced,
         // so an ordinary stroke doesn't raise an activation every time.
         window.addEventListener('touchstart', function () { mittenEnsureActive(false); }, true);
-        window.addEventListener('mousedown', function () { mittenEnsureActive(false); }, true);
+        window.addEventListener('mousedown', function (e)
+        {
+            mittenEnsureActive(false);
+
+            // The middle button pans and zooms the camera. A browser answers it with the
+            // autoscroll cursor, and outside fullscreen it scrolls the page under the game
+            // along with it. Canceling the default drops both, and KNI still sees the button
+            // since it only listens for the event.
+            if (e.button === 1) e.preventDefault();
+        }, true);
 
         var mittenSynced = false;
         var mittenFrames = 0;

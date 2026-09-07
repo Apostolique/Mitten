@@ -56,8 +56,9 @@ namespace GameProject {
         /// corner of its own canvas.
         public static Point? BackBuffer;
 
-        /// <summary>Where the pointer is on screen. A pen in contact stops moving
-        /// `Pointer.Position`, so it answers for itself while it owns the cursor.</summary>
+        /// <summary>Where the pointer is on screen. A pen press stops `Pointer.Position`
+        /// from moving, the tip and a barrel button alike, so the pen answers for itself
+        /// while it owns the cursor.</summary>
         private Vector2 PointerScreen {
             get {
                 #if BLAZORGL
@@ -451,6 +452,7 @@ namespace GameProject {
                 var c = d.Color == TWColor.Transparent ? _bgColor : d.Color;
                 Vector2 a = d.A;
                 Vector2 b = d.B;
+                float ra = d.RadiusA;
                 float r = d.Radius;
                 if (_selGesture != SelGesture.None && _selectedIds.Contains(d.Id)) {
                     if (_selGesture == SelGesture.Move) {
@@ -459,10 +461,11 @@ namespace GameProject {
                     } else if (_selGesture == SelGesture.Scale) {
                         a = scaleC + (a - scaleC) * scaleF;
                         b = scaleC + (b - scaleC) * scaleF;
+                        ra *= scaleF;
                         r *= scaleF;
                     }
                 }
-                StrokeSegment(a, b, r, c);
+                StrokeSegment(a, b, ra, r, c);
                 inView++;
             }
             EndStroke();
@@ -472,6 +475,7 @@ namespace GameProject {
                     if (d.Id < fullCoverId || !_selectedIds.Contains(d.Id)) continue;
                     Vector2 a = d.A;
                     Vector2 b = d.B;
+                    float ra = d.RadiusA;
                     float r = d.Radius;
                     if (_selGesture == SelGesture.Move) {
                         a += moveDelta;
@@ -479,9 +483,10 @@ namespace GameProject {
                     } else if (_selGesture == SelGesture.Scale) {
                         a = scaleC + (a - scaleC) * scaleF;
                         b = scaleC + (b - scaleC) * scaleF;
+                        ra *= scaleF;
                         r *= scaleF;
                     }
-                    StrokeSegment(a, b, MathF.Max(1f, r * 0.35f), SelectAccent);
+                    StrokeSegment(a, b, MathF.Max(1f, ra * 0.35f), MathF.Max(1f, r * 0.35f), SelectAccent);
                 }
                 EndStroke();
             }
@@ -621,9 +626,6 @@ namespace GameProject {
                     currentCursor = _camera.ScreenToWorld(x, y);
                     _lastTablet = currentCursor;
                     _lastPressure = _tabletPressure;
-                    #if BLAZORGL
-                    _penHasPosition = true;
-                    #endif
 
                     if (totalTime - _maxLastTime < 300) {
                         _maxPressure = MathF.Max(_tabletPressure, _maxPressure);
@@ -666,15 +668,6 @@ namespace GameProject {
 
                 ranOnce = true;
             } while (true);
-
-            #if BLAZORGL
-            // A pen sends no mouse events of its own, so `Pointer.Position` holds whatever the
-            // last hover left there and `UpdateCamera` puts the brush back on it every frame.
-            // The pen's own position takes over, and it holds through the frames that drain no
-            // packet rather than snapping back and flickering between the two. The page decides
-            // when a mouse takes the brush back, since it can see which device moved.
-            if (_penHasPosition && Pen!.OwnsCursor) _mouseWorld = _lastTablet;
-            #endif
         }
         #endif
 
@@ -724,16 +717,16 @@ namespace GameProject {
                 if (_dragZoom.Held()) {
                     if (_dragZoom.Pressed()) {
                         _expStart = _targetExp;
-                        _zoomStart = Pointer.Position;
-                        _dragAnchor = _camera.ScreenToWorld(Pointer.Position);
-                        _pinCamera = Pointer.Position;
+                        _zoomStart = PointerScreen;
+                        _dragAnchor = _camera.ScreenToWorld(PointerScreen);
+                        _pinCamera = PointerScreen;
                         _rePinZoom = false;
                     } else if (_rePinZoom) {
                         _expStart = _targetExp;
-                        _zoomStart = Pointer.Position;
+                        _zoomStart = PointerScreen;
                         _rePinZoom = false;
                     }
-                    var diffY = (Pointer.Position.Y - _zoomStart.Y) / 100.0;
+                    var diffY = (PointerScreen.Y - _zoomStart.Y) / 100.0;
                     SetExpTween(_expStart + diffY, 0);
 
                     ShowZoomSidebar();
@@ -763,9 +756,9 @@ namespace GameProject {
             // same thing the drag zoom does with the cursor, so both take this path.
             if (_dragZoom.Held() || pinching) {
                 SetXYTween(_xy.Value + _dragAnchor - _camera.ScreenToWorld(_pinCamera), 0);
-                _mouseWorld = _camera.ScreenToWorld(Pointer.Position);
+                _mouseWorld = _camera.ScreenToWorld(PointerScreen);
             } else {
-                _mouseWorld = _camera.ScreenToWorld(Pointer.Position);
+                _mouseWorld = _camera.ScreenToWorld(PointerScreen);
 
                 if (_dragCamera.Pressed()) {
                     _dragAnchor = _mouseWorld;
@@ -911,8 +904,16 @@ namespace GameProject {
         /// A stroke recorded up close holds far more points than the screen it is seen from
         /// has pixels to place them in, so a point landing within half a pixel of the last
         /// one drawn is held back rather than handed to the path.
+        ///
+        /// A path opens at the width its first segment starts at, not the width that
+        /// segment ends at. The two differ when the segment before it is off screen and
+        /// never got collected, and opening at the wrong one steps the edge of a tapering
+        /// stroke by the difference, which deep zoom blows up into a visible notch.
         /// </summary>
         private void StrokeSegment(Vector2 a, Vector2 b, float radius, Color c) {
+            StrokeSegment(a, b, radius, radius, c);
+        }
+        private void StrokeSegment(Vector2 a, Vector2 b, float radiusA, float radius, Color c) {
             if (!_usePaths) {
                 if (a == b) {
                     _sb.FillCircle(a, radius, c);
@@ -941,12 +942,16 @@ namespace GameProject {
                 }
             } else {
                 EndStroke();
-                _sb.BeginFillPath(radius, c);
+                _sb.BeginFillPath(radiusA, c);
                 _sb.PathTo(a);
-                _sb.PathTo(b);
+                if (radius == radiusA) {
+                    _sb.PathTo(b);
+                } else {
+                    _sb.PathTo(b, radius);
+                }
                 _pathOpen = true;
                 _pathColor = c;
-                _pathRadius = radius;
+                _pathRadius = radiusA;
                 _pathDrawn = b;
                 _held = false;
                 _heldRadius = 0f;
@@ -1187,22 +1192,49 @@ namespace GameProject {
             double bx = ((l.B.X - ix) - fx) * ppu;
             double by = ((l.B.Y - iy) - fy) * ppu;
             double radius = l.Radius * ppu;
+            double radiusA = l.RadiusA * ppu;
             double fill = 2.0 * _screenRadius;
 
-            if (radius > BigRadiusPx) {
+            if (Math.Max(radiusA, radius) > BigRadiusPx) {
                 // Locally the stroke is a half-plane: emit its edge nearest the camera
-                // (the origin here), the same shape CoverageStack.Collect emits.
+                // (the origin here), the same shape CoverageStack.Collect emits. A stroke
+                // tapers across a segment though, so that edge leans with the taper rather
+                // than running parallel to the spine: it is the two end circles' common
+                // tangent. Reading one radius at both ends would step the edge by the width
+                // difference for as long as a segment is over the threshold and its
+                // neighbour is not, which is a whole band of zoom.
                 double abx = bx - ax, aby = by - ay;
                 double len2 = abx * abx + aby * aby;
                 double t = len2 > 0.0 ? Math.Clamp(-(ax * abx + ay * aby) / len2, 0.0, 1.0) : 0.0;
                 double cx = ax + abx * t, cy = ay + aby * t;
                 double dist = Math.Sqrt(cx * cx + cy * cy);
-                double edge = radius - dist;   // camera is inside by this many pixels
+                // Off the ends the nearest thing is that end's own circle, so the spine
+                // still answers; between them it is the leaning wall.
+                double nx = -cx / dist, ny = -cy / dist;
+                double edge = (t <= 0.0 ? radiusA : t >= 1.0 ? radius : 0.0) - dist;
+                if (t > 0.0 && t < 1.0) {
+                    double len = Math.Sqrt(len2);
+                    double lean = (radiusA - radius) / len;
+                    if (Math.Abs(lean) < 1.0) {
+                        // The wall's normal, tilted off the perpendicular by the taper and
+                        // taken on the camera's side.
+                        double ux = abx / len, uy = aby / len;
+                        double sin = Math.Sqrt(1.0 - lean * lean);
+                        double side = -uy * nx + ux * ny >= 0.0 ? 1.0 : -1.0;
+                        double wx = lean * ux + side * sin * -uy;
+                        double wy = lean * uy + side * sin * ux;
+                        edge = wx * ax + wy * ay + radiusA;
+                        nx = wx; ny = wy;
+                    } else {
+                        // One end circle swallows the other; the hull is that circle alone.
+                        edge = Math.Max(radiusA, radius) - dist;
+                    }
+                }
                 if (dist < 1e-9 || edge > fill) {
                     _drawables.Add(new Drawable(l.Id, Vector2.Zero, Vector2.Zero, (float)fill, l.Color));
                     if (l.Id > _emitFullCoverId) _emitFullCoverId = l.Id;
                 } else if (edge > -fill) {
-                    Vector2 n = new((float)(-cx / dist), (float)(-cy / dist));
+                    Vector2 n = new((float)nx, (float)ny);
                     Vector2 tangent = new(-n.Y, n.X);
                     Vector2 center = n * (float)(edge - fill);
                     _drawables.Add(new Drawable(l.Id, center - tangent * (float)(fill * 2.0), center + tangent * (float)(fill * 2.0), (float)fill, l.Color));
@@ -1213,7 +1245,7 @@ namespace GameProject {
 
             double dx = bx - ax, dy = by - ay;
             double d2 = dx * dx + dy * dy;
-            double keep = radius + fill + 64.0;
+            double keep = Math.Max(radiusA, radius) + fill + 64.0;
             double keep2 = keep * keep;
             double a2 = ax * ax + ay * ay;
             double b2 = bx * bx + by * by;
@@ -1233,20 +1265,28 @@ namespace GameProject {
                 if (t0 >= t1) return;
                 (bx, by) = (ax + dx * t1, ay + dy * t1);
                 (ax, ay) = (ax + dx * t0, ay + dy * t0);
+                // The width runs linearly along the segment, so the sub-segment's ends
+                // read off the same line.
+                double taper = radius - radiusA;
+                radius = radiusA + taper * t1;
+                radiusA += taper * t0;
             }
 
-            _drawables.Add(new Drawable(l.Id, new Vector2((float)ax, (float)ay), new Vector2((float)bx, (float)by), (float)radius, l.Color));
+            _drawables.Add(new Drawable(l.Id, new Vector2((float)ax, (float)ay), new Vector2((float)bx, (float)by), (float)radiusA, (float)radius, l.Color));
 
             // The capsule occludes the whole screen when the origin sits deeper
             // inside it than the screen radius, which takes a stroke at least that wide
-            // to begin with. Everything thinner skips the square root.
-            if (radius < _screenRadius || l.Id <= _emitFullCoverId) return;
+            // to begin with. Everything thinner skips the square root. A tapering
+            // segment answers for its narrow end, the width it is sure to have
+            // everywhere.
+            double thin = Math.Min(radiusA, radius);
+            if (thin < _screenRadius || l.Id <= _emitFullCoverId) return;
 
             double tdx = bx - ax, tdy = by - ay;
             double td2 = tdx * tdx + tdy * tdy;
             double tt = td2 > 0.0 ? Math.Clamp(-(ax * tdx + ay * tdy) / td2, 0.0, 1.0) : 0.0;
             double ex = ax + tdx * tt, ey = ay + tdy * tt;
-            if (radius - Math.Sqrt(ex * ex + ey * ey) >= _screenRadius) {
+            if (thin - Math.Sqrt(ex * ex + ey * ey) >= _screenRadius) {
                 _emitFullCoverId = l.Id;
             }
         }
@@ -1795,16 +1835,33 @@ namespace GameProject {
             l.Leaf = l.Node.Tree.Add(l.AABB, l);
             l.Node.BubbleAdd(l.AABB, l.Id, l.Color == TWColor.Transparent ? null : l.Color);
             _lines.Add(l.Id, l);
+            RelinkRadiusA(l.Id);
+            RelinkRadiusA(l.Id + 1);
             if (!_strokes.TryGetValue(l.StrokeId, out List<Line>? stroke)) {
                 stroke = [];
                 _strokes.Add(l.StrokeId, stroke);
             }
             stroke.Add(l);
         }
+        /// <summary>
+        /// Refreshes the width a line starts at. A segment carries the width of its own end
+        /// only, so it starts at whatever the segment before it left there, and a line
+        /// arriving or leaving changes its own start and the next one's, nothing further.
+        /// Both sides get refreshed since a file loads its lines in no particular order.
+        /// </summary>
+        private void RelinkRadiusA(int id) {
+            if (!_lines.TryGetValue(id, out Line? l)) return;
+            l.RadiusA = _lines.TryGetValue(id - 1, out Line? prev)
+                && prev.StrokeId == l.StrokeId && prev.Node == l.Node
+                && prev.Color == l.Color && prev.B == l.A
+                ? prev.Radius
+                : l.Radius;
+        }
         private void DetachLine(Line l) {
             l.Node.Tree.Remove(l.Leaf);
             l.Node.BubbleRemove();
             _lines.Remove(l.Id);
+            RelinkRadiusA(l.Id + 1);
             List<Line> stroke = _strokes[l.StrokeId];
             stroke.Remove(l);
             if (stroke.Count == 0) {
@@ -2920,8 +2977,6 @@ namespace GameProject {
         float _lastPressure = 0f;
         #endif
         #if BLAZORGL
-        /// <summary>Whether `_lastTablet` holds a position the pen actually reported.</summary>
-        bool _penHasPosition = false;
         Vector2 _penScreen = Vector2.Zero;
         bool _penContact = false;
         #endif

@@ -83,7 +83,29 @@ namespace GameProject {
                     e.FullCover = true;
                 } else {
                     Vector2D n = delta / dist;
-                    double d = Vector2D.Dot(n, c) + l.Radius;
+                    // A tapered segment's width at each end, since seeding off one radius
+                    // would put the edge somewhere the same stroke drawn a level up does
+                    // not have it.
+                    double rA = l.RadiusA;
+                    double lean = len2 > 0.0 && t > 0.0 && t < 1.0
+                        ? (rA - l.Radius) / Math.Sqrt(len2)
+                        : 0.0;
+                    double d;
+                    if (Math.Abs(lean) > 0.0 && Math.Abs(lean) < 1.0) {
+                        // The stroke tapers across the segment, so the edge is the two end
+                        // circles' common tangent, which leans off the spine's perpendicular.
+                        Vector2D u = ab / Math.Sqrt(len2);
+                        Vector2D perp = new(-u.Y, u.X);
+                        double side = Vector2D.Dot(perp, n) >= 0.0 ? 1.0 : -1.0;
+                        n = u * lean + perp * (side * Math.Sqrt(1.0 - lean * lean));
+                        d = Vector2D.Dot(n, l.A) + rA;
+                    } else if (Math.Abs(lean) >= 1.0) {
+                        // One end circle swallows the other; the hull is that circle alone.
+                        d = Vector2D.Dot(n, c) + Math.Max(rA, l.Radius);
+                    } else {
+                        // Off the ends, and everywhere on a stroke of one width.
+                        d = Vector2D.Dot(n, c) + (t <= 0.0 ? rA : l.Radius);
+                    }
                     // Bring the edge into anchor units through the exact descent path.
                     for (int i = path.Count - 1; i >= 0; i--) {
                         d = (d - Vector2D.Dot(n, path[i])) * Frame.K;
